@@ -49,11 +49,18 @@
 
     </LinearLayout>
 
-    <com.example.videoeditor.ui.TimelineView
-        android:id="@+id/timelineView"
+    <HorizontalScrollView
         android:layout_width="match_parent"
         android:layout_height="80dp"
-        android:background="#111111" />
+        android:background="#111111"
+        android:scrollbars="none">
+
+        <com.example.videoeditor.ui.TimelineView
+            android:id="@+id/timelineView"
+            android:layout_width="wrap_content"
+            android:layout_height="match_parent" />
+
+    </HorizontalScrollView>
 
     <LinearLayout
         android:layout_width="match_parent"
