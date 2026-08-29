@@ -46,8 +46,33 @@ class TimelineExporter(private val context: Context) {
         val sequences = mutableListOf(videoSequence)
 
         project.audioTrack?.let { audio ->
-            val audioItem = EditedMediaItem.Builder(MediaItem.fromUri(audio.sourceUri))
+            val audioProcessors = mutableListOf<androidx.media3.common.audio.AudioProcessor>()
+            if (audio.volume != 1f) {
+                val mixer = androidx.media3.common.audio.ChannelMixingAudioProcessor()
+                // Configure gain for both mono and stereo sources -- Media3 requires
+                // registering a matrix per possible input channel count.
+                mixer.putChannelMixingMatrix(
+                    androidx.media3.common.audio.ChannelMixingMatrix.create(1, 1).scaleBy(audio.volume)
+                )
+                mixer.putChannelMixingMatrix(
+                    androidx.media3.common.audio.ChannelMixingMatrix.create(2, 2).scaleBy(audio.volume)
+                )
+                audioProcessors += mixer
+            }
+
+            val audioMediaItem = MediaItem.Builder()
+                .setUri(audio.sourceUri)
+                .setClippingConfiguration(
+                    MediaItem.ClippingConfiguration.Builder()
+                        .setStartPositionMs(audio.startMs)
+                        .setEndPositionMs(audio.startMs + project.totalDurationMs)
+                        .build()
+                )
+                .build()
+
+            val audioItem = EditedMediaItem.Builder(audioMediaItem)
                 .setRemoveVideo(true)
+                .setEffects(Effects(audioProcessors, emptyList()))
                 .build()
             sequences += EditedMediaItemSequence(audioItem)
         }

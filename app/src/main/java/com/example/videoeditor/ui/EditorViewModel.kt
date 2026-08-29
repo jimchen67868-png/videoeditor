@@ -87,6 +87,22 @@ class EditorViewModel : ViewModel() {
         _exportProgress.value = progress
     }
 
+    fun setAudioTrack(uri: Uri) {
+        val current = _project.value ?: return
+        _project.value = current.copy(audioTrack = com.example.videoeditor.model.AudioTrack(sourceUri = uri))
+    }
+
+    fun setAudioTrackVolume(volume: Float) {
+        val current = _project.value ?: return
+        val track = current.audioTrack ?: return
+        _project.value = current.copy(audioTrack = track.copy(volume = volume.coerceIn(0f, 1f)))
+    }
+
+    fun removeAudioTrack() {
+        val current = _project.value ?: return
+        _project.value = current.copy(audioTrack = null)
+    }
+
     private inline fun updateClip(clipId: String, transform: (Clip) -> Clip) {
         val current = _project.value ?: return
         _project.value = current.copy(

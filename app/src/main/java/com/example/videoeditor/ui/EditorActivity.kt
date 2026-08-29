@@ -42,6 +42,13 @@ class EditorActivity : AppCompatActivity() {
         uri?.let { onVideoPicked(it) }
     }
 
+    private val pickMusic = registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        uri?.let {
+            viewModel.setAudioTrack(it)
+            Toast.makeText(this, "Music added", Toast.LENGTH_SHORT).show()
+        }
+    }
+
     private val requestNotificationPermission =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { /* no-op either way */ }
 
@@ -100,6 +107,12 @@ class EditorActivity : AppCompatActivity() {
         }
         binding.exportButton.setOnClickListener { startExport() }
 
+        binding.addMusicButton.setOnClickListener { pickMusic.launch("audio/*") }
+        binding.removeMusicButton.setOnClickListener {
+            viewModel.removeAudioTrack()
+            Toast.makeText(this, "Music removed", Toast.LENGTH_SHORT).show()
+        }
+
         binding.filterGrayscaleButton.setOnClickListener { applyFilterToSelected(com.example.videoeditor.model.FilterType.GRAYSCALE) }
         binding.filterSepiaButton.setOnClickListener { applyFilterToSelected(com.example.videoeditor.model.FilterType.SEPIA) }
         binding.filterNoneButton.setOnClickListener { applyFilterToSelected(com.example.videoeditor.model.FilterType.NONE) }
@@ -107,6 +120,14 @@ class EditorActivity : AppCompatActivity() {
         viewModel.project.observe(this) { project ->
             binding.timelineView.setClips(project.clips)
             rebuildPreviewPlaylist(project)
+
+            val track = project.audioTrack
+            binding.musicTrackLabel.text = if (track != null) {
+                queryDisplayName(track.sourceUri) ?: "Music track added"
+            } else {
+                "No music"
+            }
+            binding.removeMusicButton.visibility = if (track != null) android.view.View.VISIBLE else android.view.View.GONE
         }
 
         viewModel.exportProgress.observe(this) { progress ->
@@ -131,6 +152,16 @@ class EditorActivity : AppCompatActivity() {
         super.onStop()
         player.pause()
         runCatching { unregisterReceiver(exportResultReceiver) }
+    }
+
+    private fun queryDisplayName(uri: Uri): String? {
+        return try {
+            contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+                if (cursor.moveToFirst()) cursor.getString(0) else null
+            }
+        } catch (_: Exception) {
+            null
+        }
     }
 
     private fun onVideoPicked(uri: Uri) {
