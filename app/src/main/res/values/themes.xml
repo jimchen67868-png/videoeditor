@@ -1,0 +1,6 @@
+<resources>
+    <style name="Theme.VideoEditor" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <item name="colorPrimary">#FF7A00</item>
+        <item name="android:windowBackground">#000000</item>
+    </style>
+</resources>
