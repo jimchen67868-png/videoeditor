@@ -37,6 +37,8 @@ class ExportWorkerService : Service() {
         const val NOTIFICATION_ID = 1001
         const val EXTRA_OUTPUT_PATH = "output_path"
         const val EXTRA_DESTINATION_URI = "destination_uri"
+        const val EXTRA_RESOLUTION_NAME = "resolution_name"
+        const val EXTRA_CODEC_NAME = "codec_name"
         const val ACTION_EXPORT_RESULT = "com.example.videoeditor.EXPORT_RESULT"
         const val EXTRA_RESULT_SUCCESS = "result_success"
         const val EXTRA_RESULT_MESSAGE = "result_message"
@@ -52,6 +54,14 @@ class ExportWorkerService : Service() {
             ?: "${filesDir}/export_${System.currentTimeMillis()}.mp4"
         val destinationUriString = intent?.getStringExtra(EXTRA_DESTINATION_URI)
 
+        val resolution = intent?.getStringExtra(EXTRA_RESOLUTION_NAME)
+            ?.let { name -> ResolutionPreset.entries.firstOrNull { it.name == name } }
+            ?: ResolutionPreset.P1080
+        val codec = intent?.getStringExtra(EXTRA_CODEC_NAME)
+            ?.let { name -> VideoCodec.entries.firstOrNull { it.name == name } }
+            ?: VideoCodec.H264
+        val settings = ExportSettings(resolution, codec)
+
         val project: Project? = ExportRequestHolder.pendingProject
 
         if (project == null) {
@@ -64,6 +74,7 @@ class ExportWorkerService : Service() {
         exporter.export(
             project = project,
             outputFile = File(outputPath),
+            settings = settings,
             onProgress = { progress -> updateNotification(progress) },
             onComplete = { success, file, error ->
                 if (success && file != null && destinationUriString != null) {

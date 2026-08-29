@@ -241,14 +241,47 @@ class EditorActivity : AppCompatActivity() {
             Toast.makeText(this, "Add a clip before exporting", Toast.LENGTH_SHORT).show()
             return
         }
-        // Ask where to save first -- runExport() does the actual work once we have a destination.
-        val suggestedName = "edited_video_${System.currentTimeMillis()}.mp4"
-        pickExportDestination.launch(suggestedName)
+        showExportSettingsDialog()
     }
+
+    private fun showExportSettingsDialog() {
+        val resolutions = com.example.videoeditor.export.ResolutionPreset.entries.toTypedArray()
+        val resolutionLabels = resolutions.map { it.label }.toTypedArray()
+        var selectedResolution = com.example.videoeditor.export.ResolutionPreset.P1080
+
+        val codecs = com.example.videoeditor.export.VideoCodec.entries.toTypedArray()
+        val codecLabels = codecs.map { it.label }.toTypedArray()
+        var selectedCodec = com.example.videoeditor.export.VideoCodec.H264
+
+        android.app.AlertDialog.Builder(this)
+            .setTitle("Resolution")
+            .setSingleChoiceItems(resolutionLabels, resolutions.indexOf(selectedResolution)) { _, which ->
+                selectedResolution = resolutions[which]
+            }
+            .setPositiveButton("Next") { _, _ ->
+                android.app.AlertDialog.Builder(this)
+                    .setTitle("Video codec")
+                    .setSingleChoiceItems(codecLabels, codecs.indexOf(selectedCodec)) { _, which ->
+                        selectedCodec = codecs[which]
+                    }
+                    .setPositiveButton("Choose save location") { _, _ ->
+                        pendingExportSettings = com.example.videoeditor.export.ExportSettings(selectedResolution, selectedCodec)
+                        val suggestedName = "edited_video_${System.currentTimeMillis()}.mp4"
+                        pickExportDestination.launch(suggestedName)
+                    }
+                    .setNegativeButton("Cancel", null)
+                    .show()
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private var pendingExportSettings: com.example.videoeditor.export.ExportSettings? = null
 
     private fun runExport(destinationUri: Uri) {
         val project = viewModel.project.value
         if (project == null || project.clips.isEmpty()) return
+        val settings = pendingExportSettings ?: com.example.videoeditor.export.ExportSettings()
 
         val tempOutputFile = File(cacheDir, "export_temp_${System.currentTimeMillis()}.mp4")
         ExportRequestHolder.pendingProject = project
@@ -256,10 +289,12 @@ class EditorActivity : AppCompatActivity() {
         val intent = Intent(this, ExportWorkerService::class.java).apply {
             putExtra(ExportWorkerService.EXTRA_OUTPUT_PATH, tempOutputFile.absolutePath)
             putExtra(ExportWorkerService.EXTRA_DESTINATION_URI, destinationUri.toString())
+            putExtra(ExportWorkerService.EXTRA_RESOLUTION_NAME, settings.resolution.name)
+            putExtra(ExportWorkerService.EXTRA_CODEC_NAME, settings.codec.name)
         }
         ContextCompat.startForegroundService(this, intent)
         viewModel.setExportProgress(0)
-        Toast.makeText(this, "Export started -- check notification for progress", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, "Export started (${settings.resolution.label}, ${settings.codec.label}) -- check notification for progress", Toast.LENGTH_LONG).show()
     }
 
     override fun onDestroy() {

@@ -39,10 +39,11 @@ class TimelineExporter(private val context: Context) {
     fun export(
         project: Project,
         outputFile: File,
+        settings: ExportSettings = ExportSettings(),
         onProgress: ProgressListener? = null,
         onComplete: CompletionListener
     ) {
-        val videoSequence = buildVideoSequence(project)
+        val videoSequence = buildVideoSequence(project, settings)
         val sequences = mutableListOf(videoSequence)
 
         project.audioTrack?.let { audio ->
@@ -80,6 +81,7 @@ class TimelineExporter(private val context: Context) {
         val composition = Composition.Builder(sequences).build()
 
         val transformer = Transformer.Builder(context)
+            .setVideoMimeType(settings.codec.mimeType)
             .addListener(object : Transformer.Listener {
                 override fun onCompleted(
                     composition: Composition,
@@ -119,7 +121,7 @@ class TimelineExporter(private val context: Context) {
         }
     }
 
-    private fun buildVideoSequence(project: Project): EditedMediaItemSequence {
+    private fun buildVideoSequence(project: Project, settings: ExportSettings): EditedMediaItemSequence {
         val items = project.clips.map { clip ->
             val mediaItem = MediaItem.Builder()
                 .setUri(clip.sourceUri)
@@ -134,9 +136,9 @@ class TimelineExporter(private val context: Context) {
             val videoEffects = mutableListOf<Effect>()
             FilterShaderEffect.forType(clip.filter)?.let { videoEffects += it }
             TextOverlayEffectFactory.build(clip.textOverlays)?.let { videoEffects += it }
-            // Normalize all clips to a consistent resolution so cuts/transitions line up cleanly.
+            // Normalize all clips to the chosen output resolution so cuts/transitions line up cleanly.
             videoEffects += Presentation.createForWidthAndHeight(
-                1080, 1920, Presentation.LAYOUT_SCALE_TO_FIT
+                settings.resolution.width, settings.resolution.height, Presentation.LAYOUT_SCALE_TO_FIT
             )
 
             val audioProcessors = if (clip.speed != 1.0f) {
