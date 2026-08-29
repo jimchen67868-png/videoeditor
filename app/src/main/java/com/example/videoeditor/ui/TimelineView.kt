@@ -14,11 +14,7 @@ import kotlin.math.min
 
 /**
  * Horizontal scrollable-free timeline strip showing clips proportionally to
- * their duration, with drag handles on the first/last visible clip's edges
- * for trimming. Thumbnails are intentionally out of scope here (would be
- * generated via MediaMetadataRetriever and cached as bitmaps per clip) --
- * this view focuses on layout + trim gesture handling, the part most specific
- * to this app's editing model.
+ * their duration, with drag handles on the selected clip's edges for trimming.
  */
 class TimelineView @JvmOverloads constructor(
     context: Context,
@@ -45,10 +41,12 @@ class TimelineView @JvmOverloads constructor(
 
     private var playheadMs: Long = 0L
 
-    private var draggingHandle: Handle? = null
-    private data class Handle(val clip: Clip, val isStart: Boolean, val originalMs: Long)
+    // Handle hit target sized in dp (converted to px) so it's actually grabbable
+    // on high-density screens -- 32 raw pixels was ~10dp on a 3x density phone.
+    private val handleWidthPx = 24f * resources.displayMetrics.density
 
-    private val handleWidthPx = 32f
+    private var draggingHandle: Handle? = null
+    private data class Handle(val clip: Clip, val isStart: Boolean, val originalMs: Long, val downX: Float)
 
     fun setClips(newClips: List<Clip>) {
         clips = newClips
@@ -63,24 +61,24 @@ class TimelineView @JvmOverloads constructor(
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         var x = 0f
-        val height = height.toFloat()
+        val h = height.toFloat()
 
         for (clip in clips) {
             val width = clip.timelineDurationMs * pxPerMs
-            val rect = RectF(x, 0f, x + width, height)
+            val rect = RectF(x, 0f, x + width, h)
             canvas.drawRect(rect, if (clip.id == selectedClipId) selectedClipPaint else clipPaint)
-            canvas.drawLine(x + width, 0f, x + width, height, dividerPaint)
+            canvas.drawLine(x + width, 0f, x + width, h, dividerPaint)
 
             if (clip.id == selectedClipId) {
-                canvas.drawRect(x, 0f, x + handleWidthPx, height, handlePaint)
-                canvas.drawRect(x + width - handleWidthPx, 0f, x + width, height, handlePaint)
+                canvas.drawRect(x, 0f, x + handleWidthPx, h, handlePaint)
+                canvas.drawRect(x + width - handleWidthPx, 0f, x + width, h, handlePaint)
             }
 
             x += width
         }
 
         val playheadX = playheadMs * pxPerMs
-        canvas.drawLine(playheadX, 0f, playheadX, height, playheadPaint)
+        canvas.drawLine(playheadX, 0f, playheadX, h, playheadPaint)
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
@@ -98,22 +96,27 @@ class TimelineView @JvmOverloads constructor(
                     invalidate()
                     return true
                 }
-                // Scrub playhead
+                // Nothing hit -- scrub playhead
                 listener?.onPlayheadMoved((event.x / pxPerMs).toLong())
                 return true
             }
 
             MotionEvent.ACTION_MOVE -> {
                 draggingHandle?.let { handle ->
-                    val deltaMs = ((event.x - clipStartX(handle.clip)) / pxPerMs).toLong()
+                    // Incremental delta from where the finger first touched down,
+                    // NOT an absolute position -- fixes a bug where trim points
+                    // jumped based on absolute finger position instead of drag distance.
+                    val pixelDelta = event.x - handle.downX
+                    val msDelta = (pixelDelta / pxPerMs).toLong()
+
                     val newStart: Long
                     val newEnd: Long
                     if (handle.isStart) {
-                        newStart = max(0L, min(handle.clip.trimEndMs - 100, deltaMsAbsolute(handle, deltaMs, true)))
+                        newStart = max(0L, min(handle.clip.trimEndMs - 100, handle.originalMs + msDelta))
                         newEnd = handle.clip.trimEndMs
                     } else {
                         newStart = handle.clip.trimStartMs
-                        newEnd = max(handle.clip.trimStartMs + 100, deltaMsAbsolute(handle, deltaMs, false))
+                        newEnd = max(handle.clip.trimStartMs + 100, handle.originalMs + msDelta)
                     }
                     listener?.onClipTrimmed(handle.clip.id, newStart, newEnd)
                 }
@@ -126,11 +129,6 @@ class TimelineView @JvmOverloads constructor(
             }
         }
         return super.onTouchEvent(event)
-    }
-
-    private fun deltaMsAbsolute(handle: Handle, deltaMs: Long, isStart: Boolean): Long {
-        // Translates a drag position back into an absolute trim point on the source clip.
-        return if (isStart) handle.originalMs + deltaMs else handle.originalMs + deltaMs
     }
 
     private fun clipStartX(target: Clip): Float {
@@ -157,8 +155,8 @@ class TimelineView @JvmOverloads constructor(
         val startX = clipStartX(selected)
         val width = selected.timelineDurationMs * pxPerMs
         return when {
-            xPos in startX..(startX + handleWidthPx) -> Handle(selected, true, selected.trimStartMs)
-            xPos in (startX + width - handleWidthPx)..(startX + width) -> Handle(selected, false, selected.trimEndMs)
+            xPos in startX..(startX + handleWidthPx) -> Handle(selected, true, selected.trimStartMs, xPos)
+            xPos in (startX + width - handleWidthPx)..(startX + width) -> Handle(selected, false, selected.trimEndMs, xPos)
             else -> null
         }
     }

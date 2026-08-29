@@ -31,7 +31,7 @@ object TextOverlayEffectFactory {
             }
 
             object : Media3TextOverlay() {
-                override fun getText(presentationTimeUs: Long): CharSequence = spannable
+                override fun getText(presentationTimeUs: Long): SpannableString = spannable
 
                 override fun getOverlaySettings(presentationTimeUs: Long): OverlaySettings {
                     // Only show within this overlay's active window; otherwise fully transparent.

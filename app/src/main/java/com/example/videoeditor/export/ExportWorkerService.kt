@@ -14,12 +14,13 @@ import java.io.File
 
 /**
  * Runs [TimelineExporter] as a foreground service so export survives the user
- * backgrounding the app. Wire this up from EditorViewModel via
- * ContextCompat.startForegroundService(context, intent).
+ * backgrounding the app. Broadcasts ACTION_EXPORT_RESULT when done so the
+ * Activity can show the result even though it's a separate component.
  *
- * NOTE: this is a minimal stub -- passing the full Project through an Intent
- * isn't ideal for large projects; a production app should look it up from a
- * Room-backed repository by projectId instead.
+ * NOTE: ExportRequestHolder is a static in-memory handoff -- fine for this
+ * scaffold, not fine for production (the service can be killed/restarted by
+ * the system independently of the Activity). Replace with a Room-backed
+ * lookup by project ID for anything real.
  */
 @UnstableApi
 class ExportWorkerService : Service() {
@@ -28,6 +29,9 @@ class ExportWorkerService : Service() {
         const val CHANNEL_ID = "export_channel"
         const val NOTIFICATION_ID = 1001
         const val EXTRA_OUTPUT_PATH = "output_path"
+        const val ACTION_EXPORT_RESULT = "com.example.videoeditor.EXPORT_RESULT"
+        const val EXTRA_RESULT_SUCCESS = "result_success"
+        const val EXTRA_RESULT_MESSAGE = "result_message"
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -39,11 +43,10 @@ class ExportWorkerService : Service() {
         val outputPath = intent?.getStringExtra(EXTRA_OUTPUT_PATH)
             ?: "${filesDir}/export_${System.currentTimeMillis()}.mp4"
 
-        // In a real app, fetch the Project from a repository using an ID extra
-        // rather than reconstructing it here. Left as a call site placeholder:
         val project: Project? = ExportRequestHolder.pendingProject
 
         if (project == null) {
+            broadcastResult(false, "No project data found (app may have been killed)")
             stopSelf()
             return START_NOT_STICKY
         }
@@ -52,16 +55,24 @@ class ExportWorkerService : Service() {
         exporter.export(
             project = project,
             outputFile = File(outputPath),
-            onProgress = { progress ->
-                updateNotification(progress)
-            },
+            onProgress = { progress -> updateNotification(progress) },
             onComplete = { success, file, error ->
                 notifyFinished(success, file, error)
+                broadcastResult(success, if (success) (file?.name ?: outputPath) else (error?.message ?: "unknown error"))
                 stopSelf()
             }
         )
 
         return START_NOT_STICKY
+    }
+
+    private fun broadcastResult(success: Boolean, message: String) {
+        val intent = Intent(ACTION_EXPORT_RESULT).apply {
+            setPackage(packageName)
+            putExtra(EXTRA_RESULT_SUCCESS, success)
+            putExtra(EXTRA_RESULT_MESSAGE, message)
+        }
+        sendBroadcast(intent)
     }
 
     private fun buildNotification(progress: Int): Notification =
