@@ -45,6 +45,15 @@ class EditorActivity : AppCompatActivity() {
     private val requestNotificationPermission =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { /* no-op either way */ }
 
+    private val pickExportDestination =
+        registerForActivityResult(ActivityResultContracts.CreateDocument("video/mp4")) { uri ->
+            if (uri != null) {
+                runExport(uri)
+            } else {
+                Toast.makeText(this, "Export cancelled -- no destination chosen", Toast.LENGTH_SHORT).show()
+            }
+        }
+
     private val exportResultReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             val success = intent.getBooleanExtra(ExportWorkerService.EXTRA_RESULT_SUCCESS, false)
@@ -184,12 +193,21 @@ class EditorActivity : AppCompatActivity() {
             Toast.makeText(this, "Add a clip before exporting", Toast.LENGTH_SHORT).show()
             return
         }
+        // Ask where to save first -- runExport() does the actual work once we have a destination.
+        val suggestedName = "edited_video_${System.currentTimeMillis()}.mp4"
+        pickExportDestination.launch(suggestedName)
+    }
 
-        val outputFile = File(getExternalFilesDir(null), "export_${System.currentTimeMillis()}.mp4")
+    private fun runExport(destinationUri: Uri) {
+        val project = viewModel.project.value
+        if (project == null || project.clips.isEmpty()) return
+
+        val tempOutputFile = File(cacheDir, "export_temp_${System.currentTimeMillis()}.mp4")
         ExportRequestHolder.pendingProject = project
 
         val intent = Intent(this, ExportWorkerService::class.java).apply {
-            putExtra(ExportWorkerService.EXTRA_OUTPUT_PATH, outputFile.absolutePath)
+            putExtra(ExportWorkerService.EXTRA_OUTPUT_PATH, tempOutputFile.absolutePath)
+            putExtra(ExportWorkerService.EXTRA_DESTINATION_URI, destinationUri.toString())
         }
         ContextCompat.startForegroundService(this, intent)
         viewModel.setExportProgress(0)
