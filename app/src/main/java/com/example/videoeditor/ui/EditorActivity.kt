@@ -88,7 +88,10 @@ class EditorActivity : AppCompatActivity() {
 
         binding.timelineView.listener = object : TimelineView.Listener {
             override fun onClipTrimmed(clipId: String, newTrimStartMs: Long, newTrimEndMs: Long) {
-                viewModel.trimClip(clipId, newTrimStartMs, newTrimEndMs)
+                // Called continuously while dragging -- use the "live" update
+                // that doesn't spam undo history; beginBatchEdit/endBatchEdit
+                // (below) collapse the whole drag into one undo step.
+                viewModel.trimClipLive(clipId, newTrimStartMs, newTrimEndMs)
             }
 
             override fun onClipSelected(clipId: String) {
@@ -98,6 +101,14 @@ class EditorActivity : AppCompatActivity() {
 
             override fun onPlayheadMoved(positionMs: Long) {
                 player.seekTo(positionMs)
+            }
+
+            override fun onTrimGestureStart() {
+                viewModel.beginBatchEdit()
+            }
+
+            override fun onTrimGestureEnd() {
+                viewModel.endBatchEdit()
             }
         }
 
@@ -112,6 +123,12 @@ class EditorActivity : AppCompatActivity() {
             viewModel.removeAudioTrack()
             Toast.makeText(this, "Music removed", Toast.LENGTH_SHORT).show()
         }
+
+        binding.undoButton.setOnClickListener { viewModel.undo() }
+        binding.redoButton.setOnClickListener { viewModel.redo() }
+
+        viewModel.canUndo.observe(this) { binding.undoButton.isEnabled = it }
+        viewModel.canRedo.observe(this) { binding.redoButton.isEnabled = it }
 
         binding.filterGrayscaleButton.setOnClickListener { applyFilterToSelected(com.example.videoeditor.model.FilterType.GRAYSCALE) }
         binding.filterSepiaButton.setOnClickListener { applyFilterToSelected(com.example.videoeditor.model.FilterType.SEPIA) }

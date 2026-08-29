@@ -27,6 +27,30 @@
         android:padding="8dp">
 
         <Button
+            android:id="@+id/undoButton"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:enabled="false"
+            android:text="Undo" />
+
+        <Button
+            android:id="@+id/redoButton"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:enabled="false"
+            android:text="Redo" />
+
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:padding="8dp">
+
+        <Button
             android:id="@+id/filterNoneButton"
             android:layout_width="0dp"
             android:layout_height="wrap_content"

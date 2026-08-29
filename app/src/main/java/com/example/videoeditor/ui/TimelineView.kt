@@ -35,6 +35,8 @@ class TimelineView @JvmOverloads constructor(
         fun onClipTrimmed(clipId: String, newTrimStartMs: Long, newTrimEndMs: Long)
         fun onClipSelected(clipId: String)
         fun onPlayheadMoved(positionMs: Long)
+        fun onTrimGestureStart() {}
+        fun onTrimGestureEnd() {}
     }
 
     var listener: Listener? = null
@@ -129,6 +131,7 @@ class TimelineView @JvmOverloads constructor(
                 if (hit != null) {
                     draggingHandle = hit
                     parent.requestDisallowInterceptTouchEvent(true)
+                    listener?.onTrimGestureStart()
                     return true
                 }
                 val clip = findClipAt(event.x)
@@ -162,6 +165,9 @@ class TimelineView @JvmOverloads constructor(
             }
 
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                if (draggingHandle != null) {
+                    listener?.onTrimGestureEnd()
+                }
                 draggingHandle = null
                 parent.requestDisallowInterceptTouchEvent(false)
                 return true
