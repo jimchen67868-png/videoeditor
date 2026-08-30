@@ -246,45 +246,53 @@ class EditorActivity : AppCompatActivity() {
     }
 
     /**
-     * Applies the currently-playing clip's filter and speed live in the preview,
-     * using the same Media3 Effect objects the exporter uses -- so what you see
-     * while editing now matches (aside from transitions/text overlay timing
-     * edge cases) what export produces, instead of preview always showing a
-     * flat, unfiltered image regardless of the clip's settings.
+     * Applies the given clip index's filter/text/transition/speed live in the
+     * preview, using the same Media3 Effect objects the exporter uses.
      *
-     * Called whenever playback moves to a different clip (onMediaItemTransition)
-     * and whenever the current clip's filter changes, since the effect needs to
-     * be reapplied any time either the current item or its settings change.
+     * Takes an explicit index (rather than always reading
+     * player.currentMediaItemIndex) so it can be called BEFORE player.prepare()
+     * during a playlist rebuild -- calling ExoPlayer.setVideoEffects() on an
+     * already-prepared/playing player turned out to be unreliable (this is an
+     * experimental Media3 API), which is what caused playback to stop
+     * responding after changing a filter. Setting effects before prepare()
+     * avoids that entirely. Wrapped in try/catch as a safety net: a compatibility
+     * hiccup here should never be able to break playback outright.
      */
-    private fun applyLiveEffectsForCurrentItem() {
+    private fun applyLiveEffectsForCurrentItem(index: Int = player.currentMediaItemIndex) {
         val project = viewModel.project.value ?: return
-        val index = player.currentMediaItemIndex
         val clip = project.clips.getOrNull(index) ?: return
 
-        val effects = mutableListOf<androidx.media3.common.Effect>()
-        com.example.videoeditor.effects.FilterShaderEffect.forType(clip.filter)?.let { effects += it }
-        com.example.videoeditor.effects.TextOverlayEffectFactory.build(clip.textOverlays)?.let { effects += it }
+        try {
+            val effects = mutableListOf<androidx.media3.common.Effect>()
+            com.example.videoeditor.effects.FilterShaderEffect.forType(clip.filter)?.let { effects += it }
+            com.example.videoeditor.effects.TextOverlayEffectFactory.build(clip.textOverlays)?.let { effects += it }
 
-        // Same fade logic as TimelineExporter, so preview matches export.
-        val previousClip = project.clips.getOrNull(index - 1)
-        val fadeInMs = if (previousClip?.transitionToNext == com.example.videoeditor.model.TransitionType.CROSSFADE) {
-            previousClip.transitionDurationMs
-        } else 0L
-        val fadeOutMs = if (clip.transitionToNext == com.example.videoeditor.model.TransitionType.CROSSFADE) {
-            clip.transitionDurationMs
-        } else 0L
-        val rawClipDurationMs = clip.trimEndMs - clip.trimStartMs
-        com.example.videoeditor.effects.TransitionEffectFactory
-            .fadeEffect(fadeInMs, fadeOutMs, rawClipDurationMs)
-            ?.let { effects += it }
+            // Same fade logic as TimelineExporter, so preview matches export.
+            val previousClip = project.clips.getOrNull(index - 1)
+            val fadeInMs = if (previousClip?.transitionToNext == com.example.videoeditor.model.TransitionType.CROSSFADE) {
+                previousClip.transitionDurationMs
+            } else 0L
+            val fadeOutMs = if (clip.transitionToNext == com.example.videoeditor.model.TransitionType.CROSSFADE) {
+                clip.transitionDurationMs
+            } else 0L
+            val rawClipDurationMs = clip.trimEndMs - clip.trimStartMs
+            com.example.videoeditor.effects.TransitionEffectFactory
+                .fadeEffect(fadeInMs, fadeOutMs, rawClipDurationMs)
+                ?.let { effects += it }
 
-        player.setVideoEffects(effects)
+            player.setVideoEffects(effects)
 
-        // Approximate per-clip speed in preview via the player's global playback
-        // speed -- not perfectly accurate (ExoPlayer doesn't support truly
-        // per-MediaItem speed), but changes speed as playback crosses into a
-        // clip with a different speed setting, which is close enough for editing.
-        player.setPlaybackParameters(androidx.media3.common.PlaybackParameters(clip.speed))
+            // Approximate per-clip speed in preview via the player's global playback
+            // speed -- not perfectly accurate (ExoPlayer doesn't support truly
+            // per-MediaItem speed), but changes speed as playback crosses into a
+            // clip with a different speed setting, which is close enough for editing.
+            player.setPlaybackParameters(androidx.media3.common.PlaybackParameters(clip.speed))
+        } catch (e: Exception) {
+            // Live preview effects are a nice-to-have; if this experimental API
+            // rejects the call for some reason, fail quietly rather than taking
+            // playback down with it. Export (the source of truth) is unaffected.
+            Toast.makeText(this, "Live preview effect couldn't be applied: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
     }
 
     private fun updateTransitionButtonLabel() {
@@ -437,14 +445,22 @@ class EditorActivity : AppCompatActivity() {
                 .build()
             player.addMediaItem(mediaItem)
         }
+
+        val targetIndex = if (resumeIndex < project.clips.size) resumeIndex else 0
+        // Set effects/speed BEFORE prepare() -- calling setVideoEffects() on an
+        // already-prepared/playing player is unreliable and previously caused
+        // playback to stop responding after a filter change.
+        if (project.clips.isNotEmpty()) {
+            applyLiveEffectsForCurrentItem(targetIndex)
+        }
+
         player.prepare()
         // Restore where playback was before this edit (e.g. a filter change or
         // trim adjustment) instead of jarringly restarting from the beginning.
-        if (resumeIndex < project.clips.size) {
-            player.seekTo(resumeIndex, resumePosition)
+        if (targetIndex < project.clips.size) {
+            player.seekTo(targetIndex, resumePosition)
         }
         if (wasPlaying) player.play()
-        applyLiveEffectsForCurrentItem()
         updatePlayheadAndTimeLabel()
     }
 
