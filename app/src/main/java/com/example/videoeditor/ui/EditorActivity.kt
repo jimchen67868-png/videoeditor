@@ -96,6 +96,11 @@ class EditorActivity : AppCompatActivity() {
 
         player = ExoPlayer.Builder(this).build()
         binding.previewPlayerView.player = player
+        player.addListener(object : androidx.media3.common.Player.Listener {
+            override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                applyLiveEffectsForCurrentItem()
+            }
+        })
 
         binding.timelineView.listener = object : TimelineView.Listener {
             override fun onClipTrimmed(clipId: String, newTrimStartMs: Long, newTrimEndMs: Long) {
@@ -231,6 +236,33 @@ class EditorActivity : AppCompatActivity() {
         return String.format("%d:%02d", minutes, seconds)
     }
 
+    /**
+     * Applies the currently-playing clip's filter and speed live in the preview,
+     * using the same Media3 Effect objects the exporter uses -- so what you see
+     * while editing now matches (aside from transitions/text overlay timing
+     * edge cases) what export produces, instead of preview always showing a
+     * flat, unfiltered image regardless of the clip's settings.
+     *
+     * Called whenever playback moves to a different clip (onMediaItemTransition)
+     * and whenever the current clip's filter changes, since the effect needs to
+     * be reapplied any time either the current item or its settings change.
+     */
+    private fun applyLiveEffectsForCurrentItem() {
+        val project = viewModel.project.value ?: return
+        val index = player.currentMediaItemIndex
+        val clip = project.clips.getOrNull(index) ?: return
+
+        val effects = mutableListOf<androidx.media3.common.Effect>()
+        com.example.videoeditor.effects.FilterShaderEffect.forType(clip.filter)?.let { effects += it }
+        player.setVideoEffects(effects)
+
+        // Approximate per-clip speed in preview via the player's global playback
+        // speed -- not perfectly accurate (ExoPlayer doesn't support truly
+        // per-MediaItem speed), but changes speed as playback crosses into a
+        // clip with a different speed setting, which is close enough for editing.
+        player.setPlaybackParameters(androidx.media3.common.PlaybackParameters(clip.speed))
+    }
+
     private fun queryDisplayName(uri: Uri): String? {
         return try {
             contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
@@ -276,6 +308,9 @@ class EditorActivity : AppCompatActivity() {
 
     private fun rebuildPreviewPlaylist(project: com.example.videoeditor.model.Project) {
         val wasPlaying = player.isPlaying
+        val resumeIndex = player.currentMediaItemIndex.coerceAtLeast(0)
+        val resumePosition = player.currentPosition.coerceAtLeast(0L)
+
         player.stop()
         player.clearMediaItems()
 
@@ -292,7 +327,13 @@ class EditorActivity : AppCompatActivity() {
             player.addMediaItem(mediaItem)
         }
         player.prepare()
+        // Restore where playback was before this edit (e.g. a filter change or
+        // trim adjustment) instead of jarringly restarting from the beginning.
+        if (resumeIndex < project.clips.size) {
+            player.seekTo(resumeIndex, resumePosition)
+        }
         if (wasPlaying) player.play()
+        applyLiveEffectsForCurrentItem()
         updatePlayheadAndTimeLabel()
     }
 

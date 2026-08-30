@@ -55,10 +55,16 @@ app/src/main/java/com/example/videoeditor/
 
 ## What's missing / known gaps (read before building on this)
 
-- **Live preview does not yet apply filters/overlays** — `EditorActivity`
-  currently just clips the ExoPlayer playlist to the trim points. To see filters
-  live, wire `ExoPlayer.setVideoEffects(...)` using the same `FilterShaderEffect`
-  / `TextOverlayEffectFactory` calls used in the exporter.
+- **Live preview applies filters and approximates speed** — `EditorActivity`
+  now calls `ExoPlayer.setVideoEffects(...)` using the same `FilterShaderEffect`
+  the exporter uses, swapping the active filter as playback crosses between
+  clips. Speed is approximated via the player's *global* playback speed (ExoPlayer
+  doesn't support true per-MediaItem speed), so it's close but not frame-accurate
+  during preview -- export remains the source of truth for exact timing.
+  **Text overlays still don't render live** (only at export) since wiring
+  `OverlayEffect` into the live pipeline needs the same current-clip-lookup
+  plumbing but wasn't done yet -- straightforward to add following the filter
+  pattern in `applyLiveEffectsForCurrentItem()`.
 - **Transitions are stored in the data model but not yet applied at export.**
   Media3 Transformer 1.4.x supports transitions via `EditedMediaItemSequence`
   gap/overlap configuration and custom `VideoCompositorSettings`; this scaffold
