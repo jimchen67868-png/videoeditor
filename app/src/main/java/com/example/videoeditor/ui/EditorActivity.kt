@@ -55,6 +55,9 @@ class EditorActivity : AppCompatActivity() {
 
     private val pickMusic = registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         uri?.let {
+            runCatching {
+                contentResolver.takePersistableUriPermission(it, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
             viewModel.setAudioTrack(it)
             Toast.makeText(this, "Music added", Toast.LENGTH_SHORT).show()
         }
@@ -278,6 +281,9 @@ class EditorActivity : AppCompatActivity() {
     }
 
     private fun onVideoPicked(uri: Uri) {
+        runCatching {
+            contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
         val durationMs = readVideoDurationMs(uri)
         if (durationMs <= 0L) {
             Toast.makeText(this, "Couldn't read video duration -- picked file may be unsupported", Toast.LENGTH_LONG).show()

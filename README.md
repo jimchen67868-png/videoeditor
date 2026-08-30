@@ -72,8 +72,17 @@ app/src/main/java/com/example/videoeditor/
 - **No thumbnail generation** in `TimelineView` — clips render as flat colored
   blocks. Real thumbnail strips need `MediaMetadataRetriever.getFrameAtTime`
   calls cached to bitmaps, ideally off the main thread.
-- **No persistence** — closing the app loses the project. Add a Room entity
-  mirroring `Project`/`Clip` and save on each edit or periodically.
+- **Persistence is now implemented** — `EditorViewModel` auto-saves the current
+  project (debounced ~800ms after each edit) to Room as a JSON blob (see
+  `data/ProjectDatabase.kt`), and loads the most recent one on launch. Only
+  one ongoing project is tracked (a draft), not a project library. One caveat:
+  picked video/music files use `ACTION_GET_CONTENT` (via `GetContent()`), and
+  not every content provider grants persistable read permission for that —
+  `takePersistableUriPermission` calls are wrapped in `runCatching` for this
+  reason. If a provider doesn't support it, a reloaded project after a full
+  app kill may point to a URI the app can no longer read. Switching to
+  `ActivityResultContracts.OpenDocument()` (Storage Access Framework) would
+  guarantee persistable access at the cost of a different (SAF) picker UI.
 - **`ExportRequestHolder` is a static in-memory handoff**, fine for a scaffold,
   not fine for production — pass a project ID and look it up from a repository
   instead, since the service can be killed and restarted by the system.

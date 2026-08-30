@@ -1,29 +1,35 @@
 package com.example.videoeditor.ui
 
+import android.app.Application
 import android.net.Uri
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
-import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.example.videoeditor.data.ProjectRepository
 import com.example.videoeditor.model.AudioTrack
 import com.example.videoeditor.model.Clip
 import com.example.videoeditor.model.FilterType
 import com.example.videoeditor.model.Project
 import com.example.videoeditor.model.TextOverlay
 import com.example.videoeditor.model.TransitionType
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import java.util.UUID
 
 /**
  * Holds the current [Project] as the single source of truth for the editor screen,
- * plus undo/redo history as a simple snapshot stack.
+ * plus undo/redo history as a simple snapshot stack, plus persistence.
  *
- * Every mutation goes through [applyUpdate], which pushes the pre-change state
- * onto the undo stack and clears the redo stack (standard undo/redo semantics:
- * making a new edit after undoing invalidates the "future" you undid away from).
- * This is a straightforward but memory-heavier approach than diff-based undo --
- * fine at this project's scale (a handful of clips), worth revisiting if
- * projects grow to have many clips with large per-clip data.
+ * Persistence: on every edit, a debounced auto-save writes the project to Room
+ * (as a JSON blob -- see data/ProjectDatabase.kt) so work survives the app
+ * being killed by the system, which is common on Android when backgrounded.
+ * On creation, the most recently saved project is loaded automatically. This
+ * scaffold only tracks one ongoing project (a draft), not a project library.
  */
-class EditorViewModel : ViewModel() {
+class EditorViewModel(application: Application) : AndroidViewModel(application) {
+
+    private val repository = ProjectRepository(application)
 
     private val _project = MutableLiveData(Project(id = UUID.randomUUID().toString(), name = "Untitled"))
     val project: LiveData<Project> = _project
@@ -43,6 +49,27 @@ class EditorViewModel : ViewModel() {
 
     private val _canRedo = MutableLiveData(false)
     val canRedo: LiveData<Boolean> = _canRedo
+
+    private val saveHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private val saveRunnable = Runnable {
+        val current = _project.value ?: return@Runnable
+        viewModelScope.launch(Dispatchers.IO) { repository.save(current) }
+    }
+    private val saveDebounceMs = 800L
+
+    init {
+        viewModelScope.launch(Dispatchers.IO) {
+            val loaded = repository.loadMostRecent()
+            if (loaded != null) {
+                _project.postValue(loaded)
+            }
+        }
+    }
+
+    private fun scheduleAutoSave() {
+        saveHandler.removeCallbacks(saveRunnable)
+        saveHandler.postDelayed(saveRunnable, saveDebounceMs)
+    }
 
     fun addClip(uri: Uri, durationMs: Long) {
         val newClip = Clip(
@@ -85,6 +112,7 @@ class EditorViewModel : ViewModel() {
                 if (it.id == clipId) it.copy(trimStartMs = newStartMs, trimEndMs = newEndMs) else it
             }
         )
+        scheduleAutoSave()
     }
 
     private var batchEditBaseline: Project? = null
@@ -160,6 +188,7 @@ class EditorViewModel : ViewModel() {
         redoStack.addLast(current)
         _project.value = previous
         updateHistoryFlags()
+        scheduleAutoSave()
     }
 
     /** Re-applies a state that was undone. No-op if there's nothing to redo. */
@@ -169,6 +198,7 @@ class EditorViewModel : ViewModel() {
         undoStack.addLast(current)
         _project.value = next
         updateHistoryFlags()
+        scheduleAutoSave()
     }
 
     private inline fun updateClip(clipId: String, crossinline transform: (Clip) -> Clip) {
@@ -193,6 +223,7 @@ class EditorViewModel : ViewModel() {
 
         _project.value = updated
         updateHistoryFlags()
+        scheduleAutoSave()
     }
 
     private fun updateHistoryFlags() {
