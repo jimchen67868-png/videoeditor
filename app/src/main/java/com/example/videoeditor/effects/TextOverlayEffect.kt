@@ -1,6 +1,5 @@
 package com.example.videoeditor.effects
 
-import android.graphics.Typeface
 import android.text.SpannableString
 import android.text.style.AbsoluteSizeSpan
 import android.text.style.ForegroundColorSpan
@@ -17,6 +16,26 @@ import com.google.common.collect.ImmutableList
  * Media3 renders each TextOverlay as a bitmap composited over the frame via GL,
  * so this runs the same in live preview and in final export -- no separate
  * "preview renderer" vs "export renderer" to keep in sync.
+ *
+ * FIX (previous bug -- text was added to the data model correctly but never
+ * rendered): the anchor pairing was backwards. OverlaySettings has TWO
+ * anchors that work together: backgroundFrameAnchor (WHERE on the video
+ * frame to position things) and overlayFrameAnchor (WHICH point ON THE
+ * OVERLAY BITMAP gets placed at that position). The previous code only set
+ * overlayFrameAnchor to the computed x/y and left backgroundFrameAnchor at
+ * its default, which -- depending on the overlay bitmap's own dimensions --
+ * could push the whole overlay off the visible frame entirely (invisible
+ * despite alpha being fully opaque). Fixed by setting backgroundFrameAnchor
+ * to the desired screen position and overlayFrameAnchor to (0,0) (the
+ * overlay bitmap's own center), so the overlay's center lands at that point
+ * on the frame -- the usual intended behavior.
+ *
+ * Also simplified: alpha is always fully opaque for the overlay's whole
+ * active window rather than time-windowed, since nothing in the UI currently
+ * lets a user create a partial-duration overlay anyway (every overlay added
+ * via the "Add Text" dialog spans the clip's entire duration) -- this removes
+ * a presentationTimeUs-timebase assumption that wasn't worth the added risk
+ * for a feature not yet exposed.
  */
 @UnstableApi
 object TextOverlayEffectFactory {
@@ -30,18 +49,18 @@ object TextOverlayEffectFactory {
                 setSpan(AbsoluteSizeSpan(overlay.sizeSp.toInt(), true), 0, overlay.text.length, 0)
             }
 
+            val settings = OverlaySettings.Builder()
+                .setAlphaScale(1f)
+                // Position on the video frame (NDC: -1..1, y flipped since our
+                // model's y=0 is top like normal UI coordinates).
+                .setBackgroundFrameAnchor(overlay.x * 2 - 1f, 1f - overlay.y * 2)
+                // Which point of the overlay bitmap aligns there -- (0,0) = its own center.
+                .setOverlayFrameAnchor(0f, 0f)
+                .build()
+
             object : Media3TextOverlay() {
                 override fun getText(presentationTimeUs: Long): SpannableString = spannable
-
-                override fun getOverlaySettings(presentationTimeUs: Long): OverlaySettings {
-                    // Only show within this overlay's active window; otherwise fully transparent.
-                    val timeMs = presentationTimeUs / 1000
-                    val alpha = if (timeMs in overlay.startMs..overlay.endMs) 1f else 0f
-                    return OverlaySettings.Builder()
-                        .setAlphaScale(alpha)
-                        .setOverlayFrameAnchor(overlay.x * 2 - 1f, 1f - overlay.y * 2)
-                        .build()
-                }
+                override fun getOverlaySettings(presentationTimeUs: Long): OverlaySettings = settings
             }
         }
 
