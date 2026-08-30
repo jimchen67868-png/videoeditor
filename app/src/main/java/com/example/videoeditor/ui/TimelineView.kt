@@ -12,6 +12,7 @@ import android.os.Looper
 import android.util.AttributeSet
 import android.view.MotionEvent
 import android.view.View
+import android.widget.HorizontalScrollView
 import com.example.videoeditor.model.Clip
 import java.util.concurrent.Executors
 import kotlin.math.max
@@ -22,9 +23,12 @@ import kotlin.math.min
  * with drag handles on the selected clip's edges for trimming, and a real
  * video-frame thumbnail per clip (loaded off the main thread and cached).
  *
- * Must be hosted inside a HorizontalScrollView for clips wider than the
- * screen to be reachable -- this view reports its true content width via
- * onMeasure so the scroll container knows how far it can scroll.
+ * Must be hosted directly inside a HorizontalScrollView for clips wider than
+ * the screen to be reachable -- this view reports its true content width via
+ * onMeasure so the scroll container knows how far it can scroll, AND
+ * auto-scrolls that container itself when a trim handle is dragged near the
+ * visible edge, so long clips can be trimmed all the way to their true end
+ * without the user needing a separate swipe-to-scroll step mid-drag.
  */
 class TimelineView @JvmOverloads constructor(
     context: Context,
@@ -71,6 +75,41 @@ class TimelineView @JvmOverloads constructor(
     private val thumbnailTrimStamp = mutableMapOf<String, Long>()
     private val executor = Executors.newFixedThreadPool(2)
     private val mainHandler = Handler(Looper.getMainLooper())
+
+    // --- Auto-scroll while dragging a handle near the visible edge ---
+    private var scrollViewParent: HorizontalScrollView? = null
+    private val edgeThresholdPx = 48f * resources.displayMetrics.density
+    private val autoScrollStepPx = (10f * resources.displayMetrics.density).toInt()
+    private var autoScrollDirection = 0 // -1 left, 0 none, +1 right
+    // Position relative to the ScrollView's own coordinate space (i.e. independent
+    // of scroll offset) -- used to keep tracking the drag while auto-scrolling
+    // moves content under a stationary finger, when no new MotionEvent arrives.
+    private var lastTouchXInScrollView: Float = 0f
+
+    private val autoScrollRunnable = object : Runnable {
+        override fun run() {
+            val scrollView = scrollViewParent ?: return
+            if (draggingHandle == null || autoScrollDirection == 0) return
+
+            scrollView.scrollBy(autoScrollDirection * autoScrollStepPx, 0)
+            // Recompute the drag position using the new scroll offset, since the
+            // finger hasn't necessarily moved (no fresh MotionEvent is coming).
+            val newLocalX = lastTouchXInScrollView + scrollView.scrollX
+            updateTrimFromX(newLocalX)
+
+            mainHandler.postDelayed(this, 16L)
+        }
+    }
+
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        scrollViewParent = parent as? HorizontalScrollView
+    }
+
+    override fun onDetachedFromWindow() {
+        super.onDetachedFromWindow()
+        mainHandler.removeCallbacks(autoScrollRunnable)
+    }
 
     fun setClips(newClips: List<Clip>) {
         clips = newClips
@@ -122,9 +161,6 @@ class TimelineView @JvmOverloads constructor(
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
-        // Ask the parent (HorizontalScrollView) not to steal move events once
-        // we've grabbed a handle or a clip, so dragging isn't interrupted by
-        // the scroll container trying to scroll instead.
         when (event.action) {
             MotionEvent.ACTION_DOWN -> {
                 val hit = findHandleAt(event.x)
@@ -132,6 +168,7 @@ class TimelineView @JvmOverloads constructor(
                     draggingHandle = hit
                     parent.requestDisallowInterceptTouchEvent(true)
                     listener?.onTrimGestureStart()
+                    updateLastTouchInScrollView(event.x)
                     return true
                 }
                 val clip = findClipAt(event.x)
@@ -146,20 +183,10 @@ class TimelineView @JvmOverloads constructor(
             }
 
             MotionEvent.ACTION_MOVE -> {
-                draggingHandle?.let { handle ->
-                    val pixelDelta = event.x - handle.downX
-                    val msDelta = (pixelDelta / pxPerMs).toLong()
-
-                    val newStart: Long
-                    val newEnd: Long
-                    if (handle.isStart) {
-                        newStart = max(0L, min(handle.clip.trimEndMs - 100, handle.originalMs + msDelta))
-                        newEnd = handle.clip.trimEndMs
-                    } else {
-                        newStart = handle.clip.trimStartMs
-                        newEnd = max(handle.clip.trimStartMs + 100, handle.originalMs + msDelta)
-                    }
-                    listener?.onClipTrimmed(handle.clip.id, newStart, newEnd)
+                if (draggingHandle != null) {
+                    updateLastTouchInScrollView(event.x)
+                    updateAutoScrollDirection(event.x)
+                    updateTrimFromX(event.x)
                 }
                 return true
             }
@@ -169,11 +196,63 @@ class TimelineView @JvmOverloads constructor(
                     listener?.onTrimGestureEnd()
                 }
                 draggingHandle = null
+                stopAutoScroll()
                 parent.requestDisallowInterceptTouchEvent(false)
                 return true
             }
         }
         return super.onTouchEvent(event)
+    }
+
+    /** Converts a local-view X into the ScrollView's own (scroll-offset-independent) coordinate space. */
+    private fun updateLastTouchInScrollView(localX: Float) {
+        val scrollX = scrollViewParent?.scrollX ?: 0
+        lastTouchXInScrollView = localX - scrollX
+    }
+
+    /** Starts/stops/reverses auto-scroll based on how close the finger is to the visible edge. */
+    private fun updateAutoScrollDirection(localX: Float) {
+        val scrollView = scrollViewParent ?: return
+        val visibleLeft = scrollView.scrollX
+        val visibleRight = visibleLeft + scrollView.width
+
+        val newDirection = when {
+            localX < visibleLeft + edgeThresholdPx -> -1
+            localX > visibleRight - edgeThresholdPx -> 1
+            else -> 0
+        }
+
+        if (newDirection != 0 && autoScrollDirection == 0) {
+            autoScrollDirection = newDirection
+            mainHandler.post(autoScrollRunnable)
+        } else if (newDirection == 0) {
+            stopAutoScroll()
+        } else {
+            autoScrollDirection = newDirection
+        }
+    }
+
+    private fun stopAutoScroll() {
+        autoScrollDirection = 0
+        mainHandler.removeCallbacks(autoScrollRunnable)
+    }
+
+    /** Shared trim-calculation logic, used both by real touch moves and by the auto-scroll tick. */
+    private fun updateTrimFromX(x: Float) {
+        val handle = draggingHandle ?: return
+        val pixelDelta = x - handle.downX
+        val msDelta = (pixelDelta / pxPerMs).toLong()
+
+        val newStart: Long
+        val newEnd: Long
+        if (handle.isStart) {
+            newStart = max(0L, min(handle.clip.trimEndMs - 100, handle.originalMs + msDelta))
+            newEnd = handle.clip.trimEndMs
+        } else {
+            newStart = handle.clip.trimStartMs
+            newEnd = max(handle.clip.trimStartMs + 100, handle.originalMs + msDelta)
+        }
+        listener?.onClipTrimmed(handle.clip.id, newStart, newEnd)
     }
 
     private fun clipStartX(target: Clip): Float {
