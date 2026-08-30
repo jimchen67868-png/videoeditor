@@ -64,11 +64,16 @@ app/src/main/java/com/example/videoeditor/
   **Text overlays now render live too** — `applyLiveEffectsForCurrentItem()`
   also builds a `TextOverlayEffectFactory` overlay for the current clip, so
   what you see while editing matches export for both filters and text.
-- **Transitions are stored in the data model but not yet applied at export.**
-  Media3 Transformer 1.4.x supports transitions via `EditedMediaItemSequence`
-  gap/overlap configuration and custom `VideoCompositorSettings`; this scaffold
-  stops short of wiring crossfades so you can decide the exact transition
-  library/approach.
+- **Transitions are implemented as fade-through-black, not true cross-dissolve.**
+  Select a clip and tap "Add Crossfade to Next Clip" to fade it out to black
+  as it ends while the next clip fades in from black — implemented as a
+  time-varying brightness `RgbMatrix` (`TransitionEffectFactory`), applied
+  identically in live preview and export. A true frame-blended dissolve
+  (both clips visible simultaneously, no black in between) needs Media3's
+  multi-sequence video compositing, which is genuinely experimental and easy
+  to misconfigure with silent visual bugs rather than compile errors -- if
+  that's a hard requirement, it's a separate, larger piece of work building
+  on `Composition.Builder`'s multi-sequence support with a custom compositor.
 - **No thumbnail generation** in `TimelineView` — clips render as flat colored
   blocks. Real thumbnail strips need `MediaMetadataRetriever.getFrameAtTime`
   calls cached to bitmaps, ideally off the main thread.

@@ -148,6 +148,7 @@ class EditorActivity : AppCompatActivity() {
 
         viewModel.canUndo.observe(this) { binding.undoButton.isEnabled = it }
         viewModel.canRedo.observe(this) { binding.redoButton.isEnabled = it }
+        viewModel.selectedClipId.observe(this) { updateTransitionButtonLabel() }
 
         binding.filterGrayscaleButton.setOnClickListener { applyFilterToSelected(com.example.videoeditor.model.FilterType.GRAYSCALE) }
         binding.filterSepiaButton.setOnClickListener { applyFilterToSelected(com.example.videoeditor.model.FilterType.SEPIA) }
@@ -164,6 +165,7 @@ class EditorActivity : AppCompatActivity() {
 
         binding.addTextButton.setOnClickListener { showAddTextDialog() }
         binding.removeTextButton.setOnClickListener { removeLastTextOverlayFromSelected() }
+        binding.toggleTransitionButton.setOnClickListener { toggleTransitionOnSelected() }
 
         viewModel.project.observe(this) { project ->
             binding.timelineView.setClips(project.clips)
@@ -176,6 +178,7 @@ class EditorActivity : AppCompatActivity() {
                 "No music"
             }
             binding.removeMusicButton.visibility = if (track != null) android.view.View.VISIBLE else android.view.View.GONE
+            updateTransitionButtonLabel()
         }
 
         viewModel.exportProgress.observe(this) { progress ->
@@ -261,6 +264,20 @@ class EditorActivity : AppCompatActivity() {
         val effects = mutableListOf<androidx.media3.common.Effect>()
         com.example.videoeditor.effects.FilterShaderEffect.forType(clip.filter)?.let { effects += it }
         com.example.videoeditor.effects.TextOverlayEffectFactory.build(clip.textOverlays)?.let { effects += it }
+
+        // Same fade logic as TimelineExporter, so preview matches export.
+        val previousClip = project.clips.getOrNull(index - 1)
+        val fadeInMs = if (previousClip?.transitionToNext == com.example.videoeditor.model.TransitionType.CROSSFADE) {
+            previousClip.transitionDurationMs
+        } else 0L
+        val fadeOutMs = if (clip.transitionToNext == com.example.videoeditor.model.TransitionType.CROSSFADE) {
+            clip.transitionDurationMs
+        } else 0L
+        val rawClipDurationMs = clip.trimEndMs - clip.trimStartMs
+        com.example.videoeditor.effects.TransitionEffectFactory
+            .fadeEffect(fadeInMs, fadeOutMs, rawClipDurationMs)
+            ?.let { effects += it }
+
         player.setVideoEffects(effects)
 
         // Approximate per-clip speed in preview via the player's global playback
@@ -268,6 +285,44 @@ class EditorActivity : AppCompatActivity() {
         // per-MediaItem speed), but changes speed as playback crosses into a
         // clip with a different speed setting, which is close enough for editing.
         player.setPlaybackParameters(androidx.media3.common.PlaybackParameters(clip.speed))
+    }
+
+    private fun updateTransitionButtonLabel() {
+        val project = viewModel.project.value ?: return
+        val selectedClip = project.clips.firstOrNull { it.id == viewModel.selectedClipId.value }
+        binding.toggleTransitionButton.text = if (selectedClip?.transitionToNext == com.example.videoeditor.model.TransitionType.CROSSFADE) {
+            "Remove Crossfade"
+        } else {
+            "Add Crossfade to Next Clip"
+        }
+    }
+
+    private fun toggleTransitionOnSelected() {
+        val project = viewModel.project.value
+        val clipId = viewModel.selectedClipId.value
+        val index = project?.clips?.indexOfFirst { it.id == clipId } ?: -1
+        if (project == null || clipId == null || index == -1) {
+            Toast.makeText(this, "Select a clip first", Toast.LENGTH_SHORT).show()
+            return
+        }
+        if (index == project.clips.size - 1) {
+            Toast.makeText(this, "Can't add a transition after the last clip", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val clip = project.clips[index]
+        val isCurrentlyCrossfade = clip.transitionToNext == com.example.videoeditor.model.TransitionType.CROSSFADE
+        val newTransition = if (isCurrentlyCrossfade) {
+            com.example.videoeditor.model.TransitionType.NONE
+        } else {
+            com.example.videoeditor.model.TransitionType.CROSSFADE
+        }
+        viewModel.setClipTransition(clipId, newTransition, durationMs = 500L)
+        Toast.makeText(
+            this,
+            if (newTransition == com.example.videoeditor.model.TransitionType.CROSSFADE) "Crossfade added" else "Transition removed",
+            Toast.LENGTH_SHORT
+        ).show()
     }
 
     private fun queryDisplayName(uri: Uri): String? {

@@ -122,7 +122,7 @@ class TimelineExporter(private val context: Context) {
     }
 
     private fun buildVideoSequence(project: Project, settings: ExportSettings): EditedMediaItemSequence {
-        val items = project.clips.map { clip ->
+        val items = project.clips.mapIndexed { index, clip ->
             val mediaItem = MediaItem.Builder()
                 .setUri(clip.sourceUri)
                 .setClippingConfiguration(
@@ -136,6 +136,21 @@ class TimelineExporter(private val context: Context) {
             val videoEffects = mutableListOf<Effect>()
             FilterShaderEffect.forType(clip.filter)?.let { videoEffects += it }
             TextOverlayEffectFactory.build(clip.textOverlays)?.let { videoEffects += it }
+
+            // Fade in if the PREVIOUS clip requested a transition into this one;
+            // fade out if THIS clip requested a transition into the next one.
+            val previousClip = project.clips.getOrNull(index - 1)
+            val fadeInMs = if (previousClip?.transitionToNext == com.example.videoeditor.model.TransitionType.CROSSFADE) {
+                previousClip.transitionDurationMs
+            } else 0L
+            val fadeOutMs = if (clip.transitionToNext == com.example.videoeditor.model.TransitionType.CROSSFADE) {
+                clip.transitionDurationMs
+            } else 0L
+            val rawClipDurationMs = clip.trimEndMs - clip.trimStartMs
+            com.example.videoeditor.effects.TransitionEffectFactory
+                .fadeEffect(fadeInMs, fadeOutMs, rawClipDurationMs)
+                ?.let { videoEffects += it }
+
             // Normalize all clips to the chosen output resolution so cuts/transitions line up cleanly.
             videoEffects += Presentation.createForWidthAndHeight(
                 settings.resolution.width, settings.resolution.height, Presentation.LAYOUT_SCALE_TO_FIT

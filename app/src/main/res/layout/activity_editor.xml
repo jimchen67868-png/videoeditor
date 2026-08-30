@@ -60,6 +60,20 @@
         android:padding="8dp">
 
         <Button
+            android:id="@+id/toggleTransitionButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Add Crossfade to Next Clip" />
+
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:padding="8dp">
+
+        <Button
             android:id="@+id/addTextButton"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
