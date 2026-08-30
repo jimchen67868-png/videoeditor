@@ -159,6 +159,9 @@ class EditorActivity : AppCompatActivity() {
         binding.filterPastelButton.setOnClickListener { applyFilterToSelected(com.example.videoeditor.model.FilterType.PASTEL) }
         binding.filterNightButton.setOnClickListener { applyFilterToSelected(com.example.videoeditor.model.FilterType.NIGHT) }
 
+        binding.addTextButton.setOnClickListener { showAddTextDialog() }
+        binding.removeTextButton.setOnClickListener { removeLastTextOverlayFromSelected() }
+
         viewModel.project.observe(this) { project ->
             binding.timelineView.setClips(project.clips)
             rebuildPreviewPlaylist(project)
@@ -254,6 +257,7 @@ class EditorActivity : AppCompatActivity() {
 
         val effects = mutableListOf<androidx.media3.common.Effect>()
         com.example.videoeditor.effects.FilterShaderEffect.forType(clip.filter)?.let { effects += it }
+        com.example.videoeditor.effects.TextOverlayEffectFactory.build(clip.textOverlays)?.let { effects += it }
         player.setVideoEffects(effects)
 
         // Approximate per-clip speed in preview via the player's global playback
@@ -304,6 +308,52 @@ class EditorActivity : AppCompatActivity() {
             return
         }
         viewModel.setClipFilter(clipId, filter)
+    }
+
+    private fun showAddTextDialog() {
+        val clipId = viewModel.selectedClipId.value
+        val project = viewModel.project.value
+        val clip = project?.clips?.firstOrNull { it.id == clipId }
+        if (clipId == null || clip == null) {
+            Toast.makeText(this, "Select a clip first", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val input = android.widget.EditText(this).apply {
+            hint = "Enter overlay text"
+        }
+
+        android.app.AlertDialog.Builder(this)
+            .setTitle("Add text overlay")
+            .setView(input)
+            .setPositiveButton("Add") { _, _ ->
+                val text = input.text.toString().trim()
+                if (text.isNotEmpty()) {
+                    val overlay = com.example.videoeditor.model.TextOverlay(
+                        id = java.util.UUID.randomUUID().toString(),
+                        text = text,
+                        startMs = 0L,
+                        endMs = clip.timelineDurationMs
+                    )
+                    viewModel.addTextOverlay(clipId, overlay)
+                    Toast.makeText(this, "Text added", Toast.LENGTH_SHORT).show()
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun removeLastTextOverlayFromSelected() {
+        val clipId = viewModel.selectedClipId.value
+        val project = viewModel.project.value
+        val clip = project?.clips?.firstOrNull { it.id == clipId }
+        val lastOverlay = clip?.textOverlays?.lastOrNull()
+        if (clipId == null || lastOverlay == null) {
+            Toast.makeText(this, "No text overlay on selected clip", Toast.LENGTH_SHORT).show()
+            return
+        }
+        viewModel.removeTextOverlay(clipId, lastOverlay.id)
+        Toast.makeText(this, "Text removed", Toast.LENGTH_SHORT).show()
     }
 
     private fun rebuildPreviewPlaylist(project: com.example.videoeditor.model.Project) {
