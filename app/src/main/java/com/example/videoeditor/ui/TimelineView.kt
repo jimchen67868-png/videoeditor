@@ -113,6 +113,7 @@ class TimelineView @JvmOverloads constructor(
 
     fun setClips(newClips: List<Clip>) {
         clips = newClips
+        requestLayout() // content width depends on clips -- must re-run onMeasure, not just redraw
         invalidate()
         newClips.forEach { loadThumbnailIfNeeded(it) }
     }
