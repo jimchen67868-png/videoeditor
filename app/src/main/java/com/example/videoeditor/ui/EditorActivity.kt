@@ -38,6 +38,17 @@ class EditorActivity : AppCompatActivity() {
     private val viewModel: EditorViewModel by viewModels()
     private lateinit var player: ExoPlayer
 
+    // Polls playback position while the activity is visible so the timeline
+    // playhead line and the time label stay in sync with actual playback,
+    // not just with manual scrubbing.
+    private val positionHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private val positionUpdater = object : Runnable {
+        override fun run() {
+            updatePlayheadAndTimeLabel()
+            positionHandler.postDelayed(this, 200L)
+        }
+    }
+
     private val pickVideo = registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         uri?.let { onVideoPicked(it) }
     }
@@ -172,12 +183,52 @@ class EditorActivity : AppCompatActivity() {
             @Suppress("UnspecifiedRegisterReceiverFlag")
             registerReceiver(exportResultReceiver, filter)
         }
+        positionHandler.post(positionUpdater)
     }
 
     override fun onStop() {
         super.onStop()
         player.pause()
+        positionHandler.removeCallbacks(positionUpdater)
         runCatching { unregisterReceiver(exportResultReceiver) }
+    }
+
+    /**
+     * Converts ExoPlayer's per-MediaItem position into a "global" timeline
+     * position matching TimelineView's coordinate space (sum of all clips'
+     * timeline durations before the current one, plus position within it),
+     * then updates the playhead line and the mm:ss / mm:ss label.
+     *
+     * NOTE: this assumes each clip's rendered timeline width equals its raw
+     * playback duration -- true unless a clip's speed != 1.0, since preview
+     * playback doesn't currently apply speed changes (only export does).
+     * Minor desync possible for sped-up/slowed-down clips; not worth the
+     * complexity to fix until live-preview effects are wired up properly.
+     */
+    private fun updatePlayheadAndTimeLabel() {
+        val project = viewModel.project.value ?: return
+        if (project.clips.isEmpty()) {
+            binding.timeLabel.text = "0:00 / 0:00"
+            return
+        }
+
+        val currentItemIndex = player.currentMediaItemIndex
+        var cumulativeMs = 0L
+        for (i in 0 until currentItemIndex) {
+            if (i < project.clips.size) cumulativeMs += project.clips[i].timelineDurationMs
+        }
+        val positionWithinItem = player.currentPosition.coerceAtLeast(0L)
+        val globalPositionMs = (cumulativeMs + positionWithinItem).coerceAtMost(project.totalDurationMs)
+
+        binding.timelineView.setPlayheadMs(globalPositionMs)
+        binding.timeLabel.text = "${formatTime(globalPositionMs)} / ${formatTime(project.totalDurationMs)}"
+    }
+
+    private fun formatTime(ms: Long): String {
+        val totalSeconds = ms / 1000
+        val minutes = totalSeconds / 60
+        val seconds = totalSeconds % 60
+        return String.format("%d:%02d", minutes, seconds)
     }
 
     private fun queryDisplayName(uri: Uri): String? {
@@ -242,6 +293,7 @@ class EditorActivity : AppCompatActivity() {
         }
         player.prepare()
         if (wasPlaying) player.play()
+        updatePlayheadAndTimeLabel()
     }
 
     private fun startExport() {
