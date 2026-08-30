@@ -14,7 +14,13 @@ enum class FilterType {
     SEPIA,
     VIVID,
     COOL,
-    WARM
+    WARM,
+    INVERT,
+    NOIR,
+    FADE,
+    DRAMATIC,
+    PASTEL,
+    NIGHT
 }
 
 /** Type of transition rendered between two adjacent clips on the timeline. */

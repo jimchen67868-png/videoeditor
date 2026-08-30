@@ -66,5 +66,65 @@ object FilterShaderEffect {
                 0f, 0f, 0f, 1f
             )
         }
+
+        FilterType.INVERT -> RgbMatrix { _, _ ->
+            // output = 1 - input for each channel (translate column holds the +1 offset)
+            floatArrayOf(
+                -1f, 0f, 0f, 1f,
+                0f, -1f, 0f, 1f,
+                0f, 0f, -1f, 1f,
+                0f, 0f, 0f, 1f
+            )
+        }
+
+        FilterType.NOIR -> RgbMatrix { _, _ ->
+            // High-contrast black & white: luma weighting scaled up, offset pulled down to crush shadows.
+            floatArrayOf(
+                0.5f, 0.5f, 0.5f, -0.25f,
+                0.5f, 0.5f, 0.5f, -0.25f,
+                0.5f, 0.5f, 0.5f, -0.25f,
+                0f, 0f, 0f, 1f
+            )
+        }
+
+        FilterType.FADE -> RgbMatrix { _, _ ->
+            // Vintage/matte look: desaturate slightly and lift blacks (reduced contrast, raised shadows).
+            floatArrayOf(
+                0.93f, 0.03f, 0.03f, 0.08f,
+                0.03f, 0.93f, 0.03f, 0.08f,
+                0.03f, 0.03f, 0.93f, 0.08f,
+                0f, 0f, 0f, 1f
+            )
+        }
+
+        FilterType.DRAMATIC -> RgbMatrix { _, _ ->
+            // Punchier contrast and saturation for a "cinematic" look.
+            floatArrayOf(
+                1.4f, -0.15f, -0.15f, -0.1f,
+                -0.15f, 1.4f, -0.15f, -0.1f,
+                -0.15f, -0.15f, 1.4f, -0.1f,
+                0f, 0f, 0f, 1f
+            )
+        }
+
+        FilterType.PASTEL -> RgbMatrix { _, _ ->
+            // Soft, desaturated, slightly brightened look.
+            floatArrayOf(
+                0.75f, 0.1f, 0.1f, 0.12f,
+                0.1f, 0.75f, 0.1f, 0.12f,
+                0.1f, 0.1f, 0.75f, 0.12f,
+                0f, 0f, 0f, 1f
+            )
+        }
+
+        FilterType.NIGHT -> RgbMatrix { _, _ ->
+            // Cool, darkened tone -- boosts blue, dims red/green.
+            floatArrayOf(
+                0.6f, 0f, 0f, 0f,
+                0f, 0.7f, 0f, 0f,
+                0f, 0f, 1.0f, 0.05f,
+                0f, 0f, 0f, 1f
+            )
+        }
     }
 }

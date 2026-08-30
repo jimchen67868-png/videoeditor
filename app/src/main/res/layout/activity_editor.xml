@@ -44,34 +44,108 @@
 
     </LinearLayout>
 
-    <LinearLayout
+    <HorizontalScrollView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:padding="8dp">
+        android:scrollbars="none"
+        android:paddingStart="8dp"
+        android:paddingEnd="8dp"
+        android:paddingTop="8dp"
+        android:paddingBottom="8dp">
 
-        <Button
-            android:id="@+id/filterNoneButton"
-            android:layout_width="0dp"
+        <LinearLayout
+            android:id="@+id/filterButtonContainer"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="None" />
+            android:orientation="horizontal">
 
-        <Button
-            android:id="@+id/filterGrayscaleButton"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="B&amp;W" />
+            <Button
+                android:id="@+id/filterNoneButton"
+                style="?android:attr/buttonStyleSmall"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="None" />
 
-        <Button
-            android:id="@+id/filterSepiaButton"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="Sepia" />
+            <Button
+                android:id="@+id/filterGrayscaleButton"
+                style="?android:attr/buttonStyleSmall"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="B&amp;W" />
 
-    </LinearLayout>
+            <Button
+                android:id="@+id/filterSepiaButton"
+                style="?android:attr/buttonStyleSmall"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Sepia" />
+
+            <Button
+                android:id="@+id/filterVividButton"
+                style="?android:attr/buttonStyleSmall"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Vivid" />
+
+            <Button
+                android:id="@+id/filterCoolButton"
+                style="?android:attr/buttonStyleSmall"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Cool" />
+
+            <Button
+                android:id="@+id/filterWarmButton"
+                style="?android:attr/buttonStyleSmall"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Warm" />
+
+            <Button
+                android:id="@+id/filterInvertButton"
+                style="?android:attr/buttonStyleSmall"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Invert" />
+
+            <Button
+                android:id="@+id/filterNoirButton"
+                style="?android:attr/buttonStyleSmall"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Noir" />
+
+            <Button
+                android:id="@+id/filterFadeButton"
+                style="?android:attr/buttonStyleSmall"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Fade" />
+
+            <Button
+                android:id="@+id/filterDramaticButton"
+                style="?android:attr/buttonStyleSmall"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Dramatic" />
+
+            <Button
+                android:id="@+id/filterPastelButton"
+                style="?android:attr/buttonStyleSmall"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Pastel" />
+
+            <Button
+                android:id="@+id/filterNightButton"
+                style="?android:attr/buttonStyleSmall"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Night" />
+
+        </LinearLayout>
+
+    </HorizontalScrollView>
 
     <HorizontalScrollView
         android:layout_width="match_parent"

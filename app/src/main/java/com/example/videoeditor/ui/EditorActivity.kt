@@ -133,6 +133,15 @@ class EditorActivity : AppCompatActivity() {
         binding.filterGrayscaleButton.setOnClickListener { applyFilterToSelected(com.example.videoeditor.model.FilterType.GRAYSCALE) }
         binding.filterSepiaButton.setOnClickListener { applyFilterToSelected(com.example.videoeditor.model.FilterType.SEPIA) }
         binding.filterNoneButton.setOnClickListener { applyFilterToSelected(com.example.videoeditor.model.FilterType.NONE) }
+        binding.filterVividButton.setOnClickListener { applyFilterToSelected(com.example.videoeditor.model.FilterType.VIVID) }
+        binding.filterCoolButton.setOnClickListener { applyFilterToSelected(com.example.videoeditor.model.FilterType.COOL) }
+        binding.filterWarmButton.setOnClickListener { applyFilterToSelected(com.example.videoeditor.model.FilterType.WARM) }
+        binding.filterInvertButton.setOnClickListener { applyFilterToSelected(com.example.videoeditor.model.FilterType.INVERT) }
+        binding.filterNoirButton.setOnClickListener { applyFilterToSelected(com.example.videoeditor.model.FilterType.NOIR) }
+        binding.filterFadeButton.setOnClickListener { applyFilterToSelected(com.example.videoeditor.model.FilterType.FADE) }
+        binding.filterDramaticButton.setOnClickListener { applyFilterToSelected(com.example.videoeditor.model.FilterType.DRAMATIC) }
+        binding.filterPastelButton.setOnClickListener { applyFilterToSelected(com.example.videoeditor.model.FilterType.PASTEL) }
+        binding.filterNightButton.setOnClickListener { applyFilterToSelected(com.example.videoeditor.model.FilterType.NIGHT) }
 
         viewModel.project.observe(this) { project ->
             binding.timelineView.setClips(project.clips)
