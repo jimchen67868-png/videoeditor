@@ -17,6 +17,7 @@ import androidx.core.content.ContextCompat
 import androidx.media3.common.MediaItem
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
+import com.example.videoeditor.R
 import com.example.videoeditor.databinding.ActivityEditorBinding
 import com.example.videoeditor.export.ExportRequestHolder
 import com.example.videoeditor.export.ExportWorkerService
@@ -407,21 +408,109 @@ class EditorActivity : AppCompatActivity() {
             return
         }
 
-        val input = android.widget.EditText(this).apply {
-            hint = "Enter overlay text"
+        val dialogView = layoutInflater.inflate(R.layout.dialog_text_overlay, null)
+        val textInput = dialogView.findViewById<android.widget.EditText>(R.id.overlayTextInput)
+        val colorRow = dialogView.findViewById<android.widget.LinearLayout>(R.id.colorButtonRow)
+        val sizeRow = dialogView.findViewById<android.widget.LinearLayout>(R.id.sizeButtonRow)
+        val posTop = dialogView.findViewById<android.widget.LinearLayout>(R.id.positionRowTop)
+        val posMid = dialogView.findViewById<android.widget.LinearLayout>(R.id.positionRowMiddle)
+        val posBottom = dialogView.findViewById<android.widget.LinearLayout>(R.id.positionRowBottom)
+
+        var selectedColor = android.graphics.Color.WHITE
+        var selectedSize = 24f
+        var selectedX = 0.5f
+        var selectedY = 0.85f // default: bottom-center, matching the previous hardcoded behavior
+
+        val density = resources.displayMetrics.density
+        val swatchSizePx = (36 * density).toInt()
+        val swatchMarginPx = (6 * density).toInt()
+
+        // --- Color swatches ---
+        val colorOptions = listOf(
+            "White" to android.graphics.Color.WHITE,
+            "Yellow" to android.graphics.Color.YELLOW,
+            "Red" to android.graphics.Color.RED,
+            "Cyan" to android.graphics.Color.CYAN,
+            "Black" to android.graphics.Color.BLACK
+        )
+        val colorSwatches = mutableListOf<android.view.View>()
+        colorOptions.forEach { (label, colorInt) ->
+            val swatch = android.view.View(this).apply {
+                layoutParams = android.widget.LinearLayout.LayoutParams(swatchSizePx, swatchSizePx).apply {
+                    marginEnd = swatchMarginPx
+                }
+                setBackgroundColor(colorInt)
+                contentDescription = label
+                alpha = if (colorInt == selectedColor) 1f else 0.4f
+            }
+            colorSwatches += swatch
+            colorRow.addView(swatch)
+            swatch.setOnClickListener {
+                selectedColor = colorInt
+                colorSwatches.forEach { it.alpha = 0.4f }
+                swatch.alpha = 1f
+            }
+        }
+
+        // --- Size options ---
+        val sizeOptions = listOf("S" to 18f, "M" to 24f, "L" to 36f)
+        val sizeButtons = mutableListOf<android.widget.Button>()
+        sizeOptions.forEach { (label, sizeSp) ->
+            val btn = android.widget.Button(this).apply {
+                text = label
+                layoutParams = android.widget.LinearLayout.LayoutParams(0, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                alpha = if (sizeSp == selectedSize) 1f else 0.5f
+            }
+            sizeButtons += btn
+            sizeRow.addView(btn)
+            btn.setOnClickListener {
+                selectedSize = sizeSp
+                sizeButtons.forEach { it.alpha = 0.5f }
+                btn.alpha = 1f
+            }
+        }
+
+        // --- Position grid (3x3: left/center/right x top/middle/bottom) ---
+        data class PositionOption(val label: String, val x: Float, val y: Float)
+        val rows = listOf(
+            posTop to listOf(PositionOption("TL", 0.15f, 0.15f), PositionOption("TC", 0.5f, 0.15f), PositionOption("TR", 0.85f, 0.15f)),
+            posMid to listOf(PositionOption("L", 0.15f, 0.5f), PositionOption("C", 0.5f, 0.5f), PositionOption("R", 0.85f, 0.5f)),
+            posBottom to listOf(PositionOption("BL", 0.15f, 0.85f), PositionOption("BC", 0.5f, 0.85f), PositionOption("BR", 0.85f, 0.85f))
+        )
+        val positionButtons = mutableListOf<android.widget.Button>()
+        rows.forEach { (rowLayout, options) ->
+            options.forEach { option ->
+                val btn = android.widget.Button(this).apply {
+                    text = option.label
+                    layoutParams = android.widget.LinearLayout.LayoutParams(0, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                    alpha = if (option.x == selectedX && option.y == selectedY) 1f else 0.5f
+                }
+                positionButtons += btn
+                rowLayout.addView(btn)
+                btn.setOnClickListener {
+                    selectedX = option.x
+                    selectedY = option.y
+                    positionButtons.forEach { it.alpha = 0.5f }
+                    btn.alpha = 1f
+                }
+            }
         }
 
         android.app.AlertDialog.Builder(this)
             .setTitle("Add text overlay")
-            .setView(input)
+            .setView(dialogView)
             .setPositiveButton("Add") { _, _ ->
-                val text = input.text.toString().trim()
+                val text = textInput.text.toString().trim()
                 if (text.isNotEmpty()) {
                     val overlay = com.example.videoeditor.model.TextOverlay(
                         id = java.util.UUID.randomUUID().toString(),
                         text = text,
                         startMs = 0L,
-                        endMs = clip.timelineDurationMs
+                        endMs = clip.timelineDurationMs,
+                        x = selectedX,
+                        y = selectedY,
+                        colorArgb = selectedColor,
+                        sizeSp = selectedSize
                     )
                     viewModel.addTextOverlay(clipId, overlay)
                     Toast.makeText(this, "Text added", Toast.LENGTH_SHORT).show()
