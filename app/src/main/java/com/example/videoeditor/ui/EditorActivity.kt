@@ -38,6 +38,11 @@ class EditorActivity : AppCompatActivity() {
     private val viewModel: EditorViewModel by viewModels()
     private lateinit var player: ExoPlayer
 
+    // Tracks (sourceUri, trimStart, trimEnd) per clip so the project observer
+    // can tell "clip list actually changed" apart from "only a cosmetic field
+    // like filter/text/transition changed" -- see the observer below.
+    private var lastStructuralSignature: List<Triple<Uri, Long, Long>>? = null
+
     // Polls playback position while the activity is visible so the timeline
     // playhead line and the time label stay in sync with actual playback,
     // not just with manual scrubbing.
@@ -169,7 +174,21 @@ class EditorActivity : AppCompatActivity() {
 
         viewModel.project.observe(this) { project ->
             binding.timelineView.setClips(project.clips)
-            rebuildPreviewPlaylist(project)
+
+            // Only rebuild the ExoPlayer playlist (stop/clear/re-add/prepare)
+            // when clips actually changed structurally (added, removed,
+            // reordered, or trimmed). Filter/text/transition/speed changes
+            // don't need any of that -- they only need the effects chain
+            // refreshed. Doing a full teardown/rebuild on EVERY edit (including
+            // things like a filter tap) was almost certainly what caused
+            // playback to intermittently stop responding after those edits.
+            val structuralSignature = project.clips.map { Triple(it.sourceUri, it.trimStartMs, it.trimEndMs) }
+            if (structuralSignature != lastStructuralSignature) {
+                lastStructuralSignature = structuralSignature
+                rebuildPreviewPlaylist(project)
+            } else {
+                applyLiveEffectsForCurrentItem()
+            }
 
             val track = project.audioTrack
             binding.musicTrackLabel.text = if (track != null) {
