@@ -13,22 +13,25 @@ import android.util.AttributeSet
 import android.view.MotionEvent
 import android.view.View
 import android.widget.HorizontalScrollView
+import com.example.videoeditor.model.AudioTrack
 import com.example.videoeditor.model.Clip
 import java.util.concurrent.Executors
 import kotlin.math.max
 import kotlin.math.min
 
 /**
- * Horizontal timeline strip showing clips proportionally to their duration,
- * with drag handles on the selected clip's edges for trimming, and a real
- * video-frame thumbnail per clip (loaded off the main thread and cached).
+ * Multi-track timeline strip:
+ *   - video row: clips proportional to duration, with drag handles for
+ *     trimming and real video-frame thumbnails.
+ *   - text row: a colored segment per text overlay, positioned/sized to
+ *     match where that overlay is active within its clip.
+ *   - music row: a single segment showing the background music track's
+ *     span relative to the whole project.
  *
- * Must be hosted directly inside a HorizontalScrollView for clips wider than
- * the screen to be reachable -- this view reports its true content width via
- * onMeasure so the scroll container knows how far it can scroll, AND
- * auto-scrolls that container itself when a trim handle is dragged near the
- * visible edge, so long clips can be trimmed all the way to their true end
- * without the user needing a separate swipe-to-scroll step mid-drag.
+ * Must be hosted directly inside a HorizontalScrollView for content wider
+ * than the screen to be reachable -- this view reports its true content
+ * width via onMeasure, AND auto-scrolls that container itself when a trim
+ * handle is dragged near the visible edge.
  */
 class TimelineView @JvmOverloads constructor(
     context: Context,
@@ -46,8 +49,15 @@ class TimelineView @JvmOverloads constructor(
     var listener: Listener? = null
 
     private var clips: List<Clip> = emptyList()
+    private var audioTrack: AudioTrack? = null
     private var selectedClipId: String? = null
     private var pxPerMs: Float = 0.05f // zoom level; adjust for desired timeline density
+
+    // --- Row heights (video row on top, text and music rows below it) ---
+    private val videoRowHeightPx = 80f * resources.displayMetrics.density
+    private val textRowHeightPx = 28f * resources.displayMetrics.density
+    private val musicRowHeightPx = 28f * resources.displayMetrics.density
+    private val rowGapPx = 2f * resources.displayMetrics.density
 
     private val clipPaint = Paint().apply { color = Color.parseColor("#3A3A3C") }
     private val selectedBorderPaint = Paint().apply {
@@ -59,6 +69,15 @@ class TimelineView @JvmOverloads constructor(
     private val handlePaint = Paint().apply { color = Color.WHITE }
     private val playheadPaint = Paint().apply { color = Color.parseColor("#FFD60A"); strokeWidth = 6f }
     private val bitmapPaint = Paint().apply { isFilterBitmap = true }
+
+    private val trackBackgroundPaint = Paint().apply { color = Color.parseColor("#161617") }
+    private val textSegmentPaint = Paint().apply { color = Color.parseColor("#4CAF50") }
+    private val musicSegmentPaint = Paint().apply { color = Color.parseColor("#2196F3") }
+    private val trackLabelPaint = Paint().apply {
+        color = Color.WHITE
+        isAntiAlias = true
+        textSize = 11f * resources.displayMetrics.density
+    }
 
     private var playheadMs: Long = 0L
 
@@ -118,6 +137,11 @@ class TimelineView @JvmOverloads constructor(
         newClips.forEach { loadThumbnailIfNeeded(it) }
     }
 
+    fun setAudioTrack(track: AudioTrack?) {
+        audioTrack = track
+        invalidate()
+    }
+
     fun setPlayheadMs(ms: Long) {
         playheadMs = ms
         invalidate()
@@ -127,14 +151,27 @@ class TimelineView @JvmOverloads constructor(
         val totalContentWidth = clips.sumOf { it.timelineDurationMs } * pxPerMs
         val minWidth = MeasureSpec.getSize(widthMeasureSpec)
         val desiredWidth = max(minWidth, totalContentWidth.toInt())
-        val height = MeasureSpec.getSize(heightMeasureSpec)
+
+        val desiredHeight = (videoRowHeightPx + rowGapPx + textRowHeightPx + rowGapPx + musicRowHeightPx).toInt()
+        val heightMode = MeasureSpec.getMode(heightMeasureSpec)
+        val height = if (heightMode == MeasureSpec.EXACTLY) MeasureSpec.getSize(heightMeasureSpec) else desiredHeight
+
         setMeasuredDimension(desiredWidth, height)
     }
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
+        drawVideoRow(canvas)
+        drawTextRow(canvas)
+        drawMusicRow(canvas)
+
+        val playheadX = playheadMs * pxPerMs
+        canvas.drawLine(playheadX, 0f, playheadX, height.toFloat(), playheadPaint)
+    }
+
+    private fun drawVideoRow(canvas: Canvas) {
         var x = 0f
-        val h = height.toFloat()
+        val h = videoRowHeightPx
 
         for (clip in clips) {
             val width = clip.timelineDurationMs * pxPerMs
@@ -156,28 +193,75 @@ class TimelineView @JvmOverloads constructor(
 
             x += width
         }
+    }
 
-        val playheadX = playheadMs * pxPerMs
-        canvas.drawLine(playheadX, 0f, playheadX, h, playheadPaint)
+    /** Draws one colored segment per text overlay, positioned to match where it's active within its clip. */
+    private fun drawTextRow(canvas: Canvas) {
+        val top = videoRowHeightPx + rowGapPx
+        val bottom = top + textRowHeightPx
+        canvas.drawRect(RectF(0f, top, width.toFloat(), bottom), trackBackgroundPaint)
+
+        var clipStartX = 0f
+        for (clip in clips) {
+            for (overlay in clip.textOverlays) {
+                val segStartX = clipStartX + overlay.startMs * pxPerMs
+                val segEndX = clipStartX + overlay.endMs * pxPerMs
+                val segRect = RectF(segStartX, top, segEndX, bottom)
+                canvas.drawRect(segRect, textSegmentPaint)
+
+                canvas.save()
+                canvas.clipRect(segRect)
+                canvas.drawText(overlay.text, segStartX + 4f, bottom - 8f, trackLabelPaint)
+                canvas.restore()
+            }
+            clipStartX += clip.timelineDurationMs * pxPerMs
+        }
+    }
+
+    /** Draws a single segment showing the music track's span relative to the whole project. */
+    private fun drawMusicRow(canvas: Canvas) {
+        val top = videoRowHeightPx + rowGapPx + textRowHeightPx + rowGapPx
+        val bottom = top + musicRowHeightPx
+        canvas.drawRect(RectF(0f, top, width.toFloat(), bottom), trackBackgroundPaint)
+
+        val track = audioTrack ?: return
+        val totalDurationMs = clips.sumOf { it.timelineDurationMs }
+        if (totalDurationMs <= 0) return
+
+        val segStartX = track.startMs * pxPerMs
+        val segEndX = totalDurationMs * pxPerMs
+        if (segEndX <= segStartX) return
+
+        val segRect = RectF(segStartX, top, segEndX, bottom)
+        canvas.drawRect(segRect, musicSegmentPaint)
+
+        canvas.save()
+        canvas.clipRect(segRect)
+        canvas.drawText("\u266A Music", segStartX + 4f, bottom - 8f, trackLabelPaint)
+        canvas.restore()
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
         when (event.action) {
             MotionEvent.ACTION_DOWN -> {
-                val hit = findHandleAt(event.x)
-                if (hit != null) {
-                    draggingHandle = hit
-                    parent.requestDisallowInterceptTouchEvent(true)
-                    listener?.onTrimGestureStart()
-                    updateLastTouchInScrollView(event.x)
-                    return true
-                }
-                val clip = findClipAt(event.x)
-                if (clip != null) {
-                    selectedClipId = clip.id
-                    listener?.onClipSelected(clip.id)
-                    invalidate()
-                    return true
+                // Clip selection / trim handles only apply within the video row;
+                // the text/music rows below are visualization-only for now.
+                if (event.y <= videoRowHeightPx) {
+                    val hit = findHandleAt(event.x)
+                    if (hit != null) {
+                        draggingHandle = hit
+                        parent.requestDisallowInterceptTouchEvent(true)
+                        listener?.onTrimGestureStart()
+                        updateLastTouchInScrollView(event.x)
+                        return true
+                    }
+                    val clip = findClipAt(event.x)
+                    if (clip != null) {
+                        selectedClipId = clip.id
+                        listener?.onClipSelected(clip.id)
+                        invalidate()
+                        return true
+                    }
                 }
                 listener?.onPlayheadMoved((event.x / pxPerMs).toLong())
                 return true

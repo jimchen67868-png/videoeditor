@@ -175,6 +175,7 @@ class EditorActivity : AppCompatActivity() {
 
         viewModel.project.observe(this) { project ->
             binding.timelineView.setClips(project.clips)
+            binding.timelineView.setAudioTrack(project.audioTrack)
 
             // Only rebuild the ExoPlayer playlist (stop/clear/re-add/prepare)
             // when clips actually changed structurally (added, removed,
