@@ -60,6 +60,36 @@
         android:padding="8dp">
 
         <Button
+            android:id="@+id/copyClipButton"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Copy" />
+
+        <Button
+            android:id="@+id/pasteClipButton"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:enabled="false"
+            android:text="Paste" />
+
+        <Button
+            android:id="@+id/deleteClipButton"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Delete" />
+
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:padding="8dp">
+
+        <Button
             android:id="@+id/toggleTransitionButton"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"

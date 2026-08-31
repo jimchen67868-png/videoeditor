@@ -85,6 +85,49 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
         applyUpdate { it.copy(clips = it.clips.filterNot { c -> c.id == clipId }) }
     }
 
+    /** Deletes the currently selected clip, if any, and clears the selection. */
+    fun deleteSelectedClip() {
+        val clipId = _selectedClipId.value ?: return
+        removeClip(clipId)
+        _selectedClipId.value = null
+    }
+
+    private var clipboardClip: Clip? = null
+
+    private val _canPaste = MutableLiveData(false)
+    val canPaste: LiveData<Boolean> = _canPaste
+
+    /** Copies the currently selected clip's settings (filter, trim, speed, etc.) to an in-memory clipboard. */
+    fun copySelectedClip() {
+        val clipId = _selectedClipId.value ?: return
+        val clip = _project.value?.clips?.firstOrNull { it.id == clipId } ?: return
+        clipboardClip = clip
+        _canPaste.value = true
+    }
+
+    /**
+     * Pastes a duplicate of the copied clip (new id, same source/trim/filter/
+     * speed/text overlays) right after the currently selected clip, or at the
+     * end of the timeline if nothing is selected.
+     */
+    fun pasteClip() {
+        val source = clipboardClip ?: return
+        val newClip = source.copy(
+            id = UUID.randomUUID().toString(),
+            textOverlays = source.textOverlays.map { it.copy(id = UUID.randomUUID().toString()) }
+        )
+        applyUpdate { current ->
+            val mutable = current.clips.toMutableList()
+            val insertAfterIndex = mutable.indexOfFirst { it.id == _selectedClipId.value }
+            if (insertAfterIndex >= 0) {
+                mutable.add(insertAfterIndex + 1, newClip)
+            } else {
+                mutable.add(newClip)
+            }
+            current.copy(clips = mutable)
+        }
+    }
+
     fun reorderClip(fromIndex: Int, toIndex: Int) {
         applyUpdate { current ->
             val mutable = current.clips.toMutableList()

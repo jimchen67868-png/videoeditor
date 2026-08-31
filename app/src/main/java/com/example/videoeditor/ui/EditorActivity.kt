@@ -173,6 +173,28 @@ class EditorActivity : AppCompatActivity() {
         binding.removeTextButton.setOnClickListener { removeLastTextOverlayFromSelected() }
         binding.toggleTransitionButton.setOnClickListener { toggleTransitionOnSelected() }
 
+        binding.copyClipButton.setOnClickListener {
+            if (viewModel.selectedClipId.value == null) {
+                Toast.makeText(this, "Select a clip first", Toast.LENGTH_SHORT).show()
+            } else {
+                viewModel.copySelectedClip()
+                Toast.makeText(this, "Clip copied", Toast.LENGTH_SHORT).show()
+            }
+        }
+        binding.pasteClipButton.setOnClickListener {
+            viewModel.pasteClip()
+            Toast.makeText(this, "Clip pasted", Toast.LENGTH_SHORT).show()
+        }
+        binding.deleteClipButton.setOnClickListener {
+            if (viewModel.selectedClipId.value == null) {
+                Toast.makeText(this, "Select a clip first", Toast.LENGTH_SHORT).show()
+            } else {
+                viewModel.deleteSelectedClip()
+                Toast.makeText(this, "Clip deleted", Toast.LENGTH_SHORT).show()
+            }
+        }
+        viewModel.canPaste.observe(this) { binding.pasteClipButton.isEnabled = it }
+
         viewModel.project.observe(this) { project ->
             binding.timelineView.setClips(project.clips)
             binding.timelineView.setAudioTrack(project.audioTrack)
