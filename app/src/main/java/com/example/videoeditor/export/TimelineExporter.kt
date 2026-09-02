@@ -56,7 +56,11 @@ class TimelineExporter(private val context: Context) {
         val videoSequence = buildVideoSequence(project, settings)
         val sequences = mutableListOf(videoSequence)
 
-        project.audioTrack?.let { audio ->
+        // Each music track gets its own EditedMediaItemSequence, mixed together
+        // by Composition alongside the video sequence -- so multiple independent
+        // tracks (e.g. background music + a separate sound effect later in the
+        // timeline) all play simultaneously at their own respective positions.
+        for (audio in project.audioTracks) {
             val audioProcessors = mutableListOf<androidx.media3.common.audio.AudioProcessor>()
             if (audio.volume != 1f) {
                 val mixer = androidx.media3.common.audio.ChannelMixingAudioProcessor()
@@ -86,9 +90,9 @@ class TimelineExporter(private val context: Context) {
                 .setEffects(Effects(audioProcessors, emptyList()))
                 .build()
 
-            // The music track has its own independent start position on the
-            // GLOBAL timeline (audio.timelineStartMs), not necessarily 0 --
-            // pad the sequence with silence chunks first so it starts playing
+            // Each track has its own independent start position on the GLOBAL
+            // timeline (audio.timelineStartMs), not necessarily 0 -- pad this
+            // track's sequence with silence chunks first so it starts playing
             // at the right moment instead of always from the beginning.
             val sequenceItems = mutableListOf<EditedMediaItem>()
             var remainingSilenceMs = audio.timelineStartMs

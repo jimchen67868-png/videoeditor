@@ -93,6 +93,7 @@ data class Clip(
  * @param durationMs how long this track plays, independent of the project's total length.
  */
 data class AudioTrack(
+    val id: String,
     val sourceUri: Uri,
     val sourceStartMs: Long = 0L,
     val timelineStartMs: Long = 0L,
@@ -111,7 +112,7 @@ data class Project(
     val id: String,
     val name: String,
     val clips: List<Clip> = emptyList(),
-    val audioTrack: AudioTrack? = null,
+    val audioTracks: List<AudioTrack> = emptyList(),
     val textOverlays: List<TextOverlay> = emptyList()
 ) {
     /** Total duration of the whole project, ignoring transition overlap (approximation). */

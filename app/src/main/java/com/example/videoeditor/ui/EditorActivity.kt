@@ -145,7 +145,7 @@ class EditorActivity : AppCompatActivity() {
 
         binding.addMusicButton.setOnClickListener { pickMusic.launch("audio/*") }
         binding.removeMusicButton.setOnClickListener {
-            viewModel.removeAudioTrack()
+            viewModel.removeLastAudioTrack()
             Toast.makeText(this, "Music removed", Toast.LENGTH_SHORT).show()
         }
 
@@ -197,7 +197,7 @@ class EditorActivity : AppCompatActivity() {
 
         viewModel.project.observe(this) { project ->
             binding.timelineView.setClips(project.clips)
-            binding.timelineView.setAudioTrack(project.audioTrack)
+            binding.timelineView.setAudioTracks(project.audioTracks)
             binding.timelineView.setTextOverlays(project.textOverlays)
 
             // Only rebuild the ExoPlayer playlist (stop/clear/re-add/prepare)
@@ -215,13 +215,13 @@ class EditorActivity : AppCompatActivity() {
                 applyLiveEffectsForCurrentItem()
             }
 
-            val track = project.audioTrack
-            binding.musicTrackLabel.text = if (track != null) {
-                queryDisplayName(track.sourceUri) ?: "Music track added"
-            } else {
-                "No music"
+            val tracks = project.audioTracks
+            binding.musicTrackLabel.text = when {
+                tracks.isEmpty() -> "No music"
+                tracks.size == 1 -> queryDisplayName(tracks[0].sourceUri) ?: "1 music track"
+                else -> "${tracks.size} music tracks"
             }
-            binding.removeMusicButton.visibility = if (track != null) android.view.View.VISIBLE else android.view.View.GONE
+            binding.removeMusicButton.visibility = if (tracks.isNotEmpty()) android.view.View.VISIBLE else android.view.View.GONE
             updateTransitionButtonLabel()
         }
 
@@ -467,7 +467,7 @@ class EditorActivity : AppCompatActivity() {
                 val durationSeconds = durationInput.text.toString().toFloatOrNull() ?: defaultDurationSeconds
                 val timelineStartMs = (startSeconds * 1000).toLong().coerceAtLeast(0L)
                 val durationMs = (durationSeconds * 1000).toLong().coerceAtLeast(500L)
-                viewModel.setAudioTrack(uri, timelineStartMs, durationMs)
+                viewModel.addAudioTrack(uri, timelineStartMs, durationMs)
                 Toast.makeText(this, "Music added", Toast.LENGTH_SHORT).show()
             }
             .setNegativeButton("Cancel", null)

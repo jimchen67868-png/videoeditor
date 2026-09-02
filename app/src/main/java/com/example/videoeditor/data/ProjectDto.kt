@@ -19,7 +19,7 @@ data class ProjectDto(
     val id: String,
     val name: String,
     val clips: List<ClipDto>,
-    val audioTrack: AudioTrackDto?,
+    val audioTracks: List<AudioTrackDto>,
     val textOverlays: List<TextOverlayDto>
 )
 
@@ -47,6 +47,7 @@ data class TextOverlayDto(
 )
 
 data class AudioTrackDto(
+    val id: String,
     val sourceUri: String,
     val sourceStartMs: Long,
     val timelineStartMs: Long,
@@ -59,7 +60,7 @@ fun Project.toDto(): ProjectDto = ProjectDto(
     id = id,
     name = name,
     clips = clips.map { it.toDto() },
-    audioTrack = audioTrack?.toDto(),
+    audioTracks = audioTracks.map { it.toDto() },
     textOverlays = textOverlays.map { it.toDto() }
 )
 
@@ -67,7 +68,7 @@ fun ProjectDto.toModel(): Project = Project(
     id = id,
     name = name,
     clips = clips.map { it.toModel() },
-    audioTrack = audioTrack?.toModel(),
+    audioTracks = audioTracks.map { it.toModel() },
     textOverlays = textOverlays.map { it.toModel() }
 )
 
@@ -106,11 +107,11 @@ private fun TextOverlayDto.toModel(): TextOverlay = TextOverlay(
 )
 
 private fun AudioTrack.toDto(): AudioTrackDto = AudioTrackDto(
-    sourceUri = sourceUri.toString(), sourceStartMs = sourceStartMs, timelineStartMs = timelineStartMs,
+    id = id, sourceUri = sourceUri.toString(), sourceStartMs = sourceStartMs, timelineStartMs = timelineStartMs,
     durationMs = durationMs, volume = volume, duckingEnabled = duckingEnabled
 )
 
 private fun AudioTrackDto.toModel(): AudioTrack = AudioTrack(
-    sourceUri = Uri.parse(sourceUri), sourceStartMs = sourceStartMs, timelineStartMs = timelineStartMs,
+    id = id, sourceUri = Uri.parse(sourceUri), sourceStartMs = sourceStartMs, timelineStartMs = timelineStartMs,
     durationMs = durationMs, volume = volume, duckingEnabled = duckingEnabled
 )

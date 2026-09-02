@@ -49,7 +49,7 @@ class TimelineView @JvmOverloads constructor(
     var listener: Listener? = null
 
     private var clips: List<Clip> = emptyList()
-    private var audioTrack: AudioTrack? = null
+    private var audioTracks: List<AudioTrack> = emptyList()
     private var textOverlays: List<com.example.videoeditor.model.TextOverlay> = emptyList()
     private var selectedClipId: String? = null
     private var pxPerMs: Float = 0.05f // zoom level; adjust for desired timeline density
@@ -143,8 +143,8 @@ class TimelineView @JvmOverloads constructor(
         invalidate()
     }
 
-    fun setAudioTrack(track: AudioTrack?) {
-        audioTrack = track
+    fun setAudioTracks(tracks: List<AudioTrack>) {
+        audioTracks = tracks
         invalidate()
     }
 
@@ -226,19 +226,19 @@ class TimelineView @JvmOverloads constructor(
         val bottom = top + musicRowHeightPx
         canvas.drawRect(RectF(0f, top, width.toFloat(), bottom), trackBackgroundPaint)
 
-        val track = audioTrack ?: return
+        for (track in audioTracks) {
+            val segStartX = track.timelineStartMs * pxPerMs
+            val segEndX = (track.timelineStartMs + track.durationMs) * pxPerMs
+            if (segEndX <= segStartX) continue
 
-        val segStartX = track.timelineStartMs * pxPerMs
-        val segEndX = (track.timelineStartMs + track.durationMs) * pxPerMs
-        if (segEndX <= segStartX) return
+            val segRect = RectF(segStartX, top, segEndX, bottom)
+            canvas.drawRect(segRect, musicSegmentPaint)
 
-        val segRect = RectF(segStartX, top, segEndX, bottom)
-        canvas.drawRect(segRect, musicSegmentPaint)
-
-        canvas.save()
-        canvas.clipRect(segRect)
-        canvas.drawText("\u266A Music", segStartX + 4f, bottom - 8f, trackLabelPaint)
-        canvas.restore()
+            canvas.save()
+            canvas.clipRect(segRect)
+            canvas.drawText("\u266A Music", segStartX + 4f, bottom - 8f, trackLabelPaint)
+            canvas.restore()
+        }
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {

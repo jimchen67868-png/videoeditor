@@ -198,21 +198,32 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
         applyUpdate { it.copy(textOverlays = it.textOverlays.filterNot { o -> o.id == overlayId }) }
     }
 
-    fun setAudioTrack(uri: Uri, timelineStartMs: Long, durationMs: Long) {
-        applyUpdate {
-            it.copy(audioTrack = AudioTrack(sourceUri = uri, timelineStartMs = timelineStartMs, durationMs = durationMs))
-        }
+    fun addAudioTrack(uri: Uri, timelineStartMs: Long, durationMs: Long) {
+        val newTrack = AudioTrack(
+            id = UUID.randomUUID().toString(),
+            sourceUri = uri,
+            timelineStartMs = timelineStartMs,
+            durationMs = durationMs
+        )
+        applyUpdate { it.copy(audioTracks = it.audioTracks + newTrack) }
     }
 
-    fun setAudioTrackVolume(volume: Float) {
+    fun setAudioTrackVolume(trackId: String, volume: Float) {
         applyUpdate { current ->
-            val track = current.audioTrack ?: return@applyUpdate current
-            current.copy(audioTrack = track.copy(volume = volume.coerceIn(0f, 1f)))
+            current.copy(audioTracks = current.audioTracks.map {
+                if (it.id == trackId) it.copy(volume = volume.coerceIn(0f, 1f)) else it
+            })
         }
     }
 
-    fun removeAudioTrack() {
-        applyUpdate { it.copy(audioTrack = null) }
+    fun removeAudioTrack(trackId: String) {
+        applyUpdate { it.copy(audioTracks = it.audioTracks.filterNot { t -> t.id == trackId }) }
+    }
+
+    /** Removes the most recently added music track. */
+    fun removeLastAudioTrack() {
+        val lastId = _project.value?.audioTracks?.lastOrNull()?.id ?: return
+        removeAudioTrack(lastId)
     }
 
     fun selectClip(clipId: String?) {
