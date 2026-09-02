@@ -137,23 +137,28 @@ class EditorActivity : AppCompatActivity() {
             }
         }
 
-        binding.addClipButton.setOnClickListener {
+        binding.closeButton.setOnClickListener { finish() }
+
+        binding.addClipTopButton.setOnClickListener {
             Toast.makeText(this, "Opening video picker...", Toast.LENGTH_SHORT).show()
             pickVideo.launch("video/*")
         }
         binding.exportButton.setOnClickListener { startExport() }
 
-        binding.addMusicButton.setOnClickListener { pickMusic.launch("audio/*") }
+        // Inline "Add audio" / "Add text" rows below the timeline, CapCut-style.
+        binding.addAudioRow.setOnClickListener { pickMusic.launch("audio/*") }
         binding.removeMusicButton.setOnClickListener {
             viewModel.removeLastAudioTrack()
             Toast.makeText(this, "Music removed", Toast.LENGTH_SHORT).show()
         }
+        binding.addTextRow.setOnClickListener { showAddTextDialog() }
+        binding.removeTextButton.setOnClickListener { removeLastTextOverlay() }
 
         binding.undoButton.setOnClickListener { viewModel.undo() }
         binding.redoButton.setOnClickListener { viewModel.redo() }
 
-        viewModel.canUndo.observe(this) { binding.undoButton.isEnabled = it }
-        viewModel.canRedo.observe(this) { binding.redoButton.isEnabled = it }
+        viewModel.canUndo.observe(this) { binding.undoButton.isEnabled = it; binding.undoButton.alpha = if (it) 1f else 0.4f }
+        viewModel.canRedo.observe(this) { binding.redoButton.isEnabled = it; binding.redoButton.alpha = if (it) 1f else 0.4f }
         viewModel.selectedClipId.observe(this) { updateTransitionButtonLabel() }
 
         binding.filterGrayscaleButton.setOnClickListener { applyFilterToSelected(com.example.videoeditor.model.FilterType.GRAYSCALE) }
@@ -169,8 +174,6 @@ class EditorActivity : AppCompatActivity() {
         binding.filterPastelButton.setOnClickListener { applyFilterToSelected(com.example.videoeditor.model.FilterType.PASTEL) }
         binding.filterNightButton.setOnClickListener { applyFilterToSelected(com.example.videoeditor.model.FilterType.NIGHT) }
 
-        binding.addTextButton.setOnClickListener { showAddTextDialog() }
-        binding.removeTextButton.setOnClickListener { removeLastTextOverlay() }
         binding.toggleTransitionButton.setOnClickListener { toggleTransitionOnSelected() }
 
         binding.copyClipButton.setOnClickListener {
@@ -194,6 +197,21 @@ class EditorActivity : AppCompatActivity() {
             }
         }
         viewModel.canPaste.observe(this) { binding.pasteClipButton.isEnabled = it }
+
+        // Bottom toolbar, CapCut-style: each tool either opens a contextual
+        // panel above the toolbar (Edit, Filters) or triggers its action
+        // directly (Audio, Text). Anything not yet implemented shows a Toast
+        // rather than silently doing nothing.
+        binding.toolEdit.setOnClickListener { showToolPanel(binding.editToolsPanel) }
+        binding.toolFilters.setOnClickListener { showToolPanel(binding.filterToolsPanel) }
+        binding.toolAudio.setOnClickListener { pickMusic.launch("audio/*") }
+        binding.toolText.setOnClickListener { showAddTextDialog() }
+        binding.toolEffects.setOnClickListener { Toast.makeText(this, "Effects: not implemented in this build", Toast.LENGTH_SHORT).show() }
+        binding.toolOverlay.setOnClickListener { Toast.makeText(this, "Overlay: not implemented in this build", Toast.LENGTH_SHORT).show() }
+        binding.toolCaptions.setOnClickListener { Toast.makeText(this, "Captions: not implemented in this build", Toast.LENGTH_SHORT).show() }
+        binding.toolAdjust.setOnClickListener { Toast.makeText(this, "Adjust: not implemented in this build", Toast.LENGTH_SHORT).show() }
+        binding.toolStickers.setOnClickListener { Toast.makeText(this, "Stickers: not implemented in this build", Toast.LENGTH_SHORT).show() }
+        binding.toolGenerateMedia.setOnClickListener { Toast.makeText(this, "Generate media: not implemented in this build", Toast.LENGTH_SHORT).show() }
 
         viewModel.project.observe(this) { project ->
             binding.timelineView.setClips(project.clips)
@@ -345,6 +363,25 @@ class EditorActivity : AppCompatActivity() {
             // rejects the call for some reason, fail quietly rather than taking
             // playback down with it. Export (the source of truth) is unaffected.
             Toast.makeText(this, "Live preview effect couldn't be applied: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    /**
+     * Shows the given sub-panel (editToolsPanel or filterToolsPanel) above the
+     * bottom toolbar, hiding the other one -- mirrors CapCut's pattern of a
+     * contextual tray that changes based on which bottom tool is selected.
+     * Tapping the same tool again toggles the panel closed.
+     */
+    private fun showToolPanel(panel: android.view.View) {
+        val alreadyShown = panel.visibility == android.view.View.VISIBLE
+        binding.editToolsPanel.visibility = android.view.View.GONE
+        binding.filterToolsPanel.visibility = android.view.View.GONE
+
+        if (alreadyShown) {
+            binding.toolPanel.visibility = android.view.View.GONE
+        } else {
+            panel.visibility = android.view.View.VISIBLE
+            binding.toolPanel.visibility = android.view.View.VISIBLE
         }
     }
 

@@ -6,6 +6,57 @@
     android:orientation="vertical"
     android:background="#000000">
 
+    <!-- Top bar: close, add clip, export -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingStart="12dp"
+        android:paddingEnd="12dp"
+        android:paddingTop="8dp"
+        android:paddingBottom="8dp">
+
+        <TextView
+            android:id="@+id/closeButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="\u2715"
+            android:textColor="#FFFFFF"
+            android:textSize="20sp"
+            android:padding="8dp" />
+
+        <View
+            android:layout_width="0dp"
+            android:layout_height="1dp"
+            android:layout_weight="1" />
+
+        <TextView
+            android:id="@+id/addClipTopButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="+ Add Clip"
+            android:textColor="#FFFFFF"
+            android:textSize="14sp"
+            android:padding="8dp"
+            android:layout_marginEnd="8dp" />
+
+        <TextView
+            android:id="@+id/exportButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Export"
+            android:textColor="#000000"
+            android:textStyle="bold"
+            android:background="#00E5C3"
+            android:paddingStart="20dp"
+            android:paddingEnd="20dp"
+            android:paddingTop="8dp"
+            android:paddingBottom="8dp" />
+
+    </LinearLayout>
+
+    <!-- Preview -->
     <androidx.media3.ui.PlayerView
         android:id="@+id/previewPlayerView"
         android:layout_width="match_parent"
@@ -13,13 +64,44 @@
         android:layout_weight="1"
         app:use_controller="true" />
 
+    <!-- Compact control row: undo/redo -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center"
+        android:paddingTop="6dp"
+        android:paddingBottom="6dp">
+
+        <TextView
+            android:id="@+id/undoButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="\u21B6 Undo"
+            android:textColor="#666666"
+            android:textSize="14sp"
+            android:padding="10dp" />
+
+        <TextView
+            android:id="@+id/redoButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Redo \u21B7"
+            android:textColor="#666666"
+            android:textSize="14sp"
+            android:padding="10dp"
+            android:layout_marginStart="24dp" />
+
+    </LinearLayout>
+
     <TextView
         android:id="@+id/timeLabel"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:gravity="center"
-        android:textColor="#FFFFFF"
-        android:padding="4dp"
+        android:textColor="#AAAAAA"
+        android:textSize="12sp"
+        android:padding="2dp"
         android:text="0:00 / 0:00" />
 
     <ProgressBar
@@ -29,199 +111,7 @@
         android:layout_height="6dp"
         android:visibility="gone" />
 
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:padding="8dp">
-
-        <Button
-            android:id="@+id/undoButton"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:enabled="false"
-            android:text="Undo" />
-
-        <Button
-            android:id="@+id/redoButton"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:enabled="false"
-            android:text="Redo" />
-
-    </LinearLayout>
-
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:padding="8dp">
-
-        <Button
-            android:id="@+id/copyClipButton"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="Copy" />
-
-        <Button
-            android:id="@+id/pasteClipButton"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:enabled="false"
-            android:text="Paste" />
-
-        <Button
-            android:id="@+id/deleteClipButton"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="Delete" />
-
-    </LinearLayout>
-
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:padding="8dp">
-
-        <Button
-            android:id="@+id/toggleTransitionButton"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Add Crossfade to Next Clip" />
-
-    </LinearLayout>
-
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:padding="8dp">
-
-        <Button
-            android:id="@+id/addTextButton"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="Add Text" />
-
-        <Button
-            android:id="@+id/removeTextButton"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="Remove Text" />
-
-    </LinearLayout>
-
-    <HorizontalScrollView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:scrollbars="none"
-        android:paddingStart="8dp"
-        android:paddingEnd="8dp"
-        android:paddingTop="8dp"
-        android:paddingBottom="8dp">
-
-        <LinearLayout
-            android:id="@+id/filterButtonContainer"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal">
-
-            <Button
-                android:id="@+id/filterNoneButton"
-                style="?android:attr/buttonStyleSmall"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="None" />
-
-            <Button
-                android:id="@+id/filterGrayscaleButton"
-                style="?android:attr/buttonStyleSmall"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="B&amp;W" />
-
-            <Button
-                android:id="@+id/filterSepiaButton"
-                style="?android:attr/buttonStyleSmall"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Sepia" />
-
-            <Button
-                android:id="@+id/filterVividButton"
-                style="?android:attr/buttonStyleSmall"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Vivid" />
-
-            <Button
-                android:id="@+id/filterCoolButton"
-                style="?android:attr/buttonStyleSmall"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Cool" />
-
-            <Button
-                android:id="@+id/filterWarmButton"
-                style="?android:attr/buttonStyleSmall"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Warm" />
-
-            <Button
-                android:id="@+id/filterInvertButton"
-                style="?android:attr/buttonStyleSmall"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Invert" />
-
-            <Button
-                android:id="@+id/filterNoirButton"
-                style="?android:attr/buttonStyleSmall"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Noir" />
-
-            <Button
-                android:id="@+id/filterFadeButton"
-                style="?android:attr/buttonStyleSmall"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Fade" />
-
-            <Button
-                android:id="@+id/filterDramaticButton"
-                style="?android:attr/buttonStyleSmall"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Dramatic" />
-
-            <Button
-                android:id="@+id/filterPastelButton"
-                style="?android:attr/buttonStyleSmall"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Pastel" />
-
-            <Button
-                android:id="@+id/filterNightButton"
-                style="?android:attr/buttonStyleSmall"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Night" />
-
-        </LinearLayout>
-
-    </HorizontalScrollView>
-
+    <!-- Timeline: video/text/music rows (drawn internally by TimelineView) -->
     <HorizontalScrollView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -235,59 +125,252 @@
 
     </HorizontalScrollView>
 
+    <!-- Inline "add" rows, CapCut-style -->
     <LinearLayout
+        android:id="@+id/addAudioRow"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
-        android:padding="8dp"
-        android:gravity="center_vertical">
+        android:gravity="center_vertical"
+        android:clickable="true"
+        android:focusable="true"
+        android:background="#1C1C1E"
+        android:paddingStart="16dp"
+        android:paddingEnd="16dp"
+        android:paddingTop="10dp"
+        android:paddingBottom="10dp">
 
-        <Button
-            android:id="@+id/addMusicButton"
+        <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Add Music" />
+            android:text="+"
+            android:textColor="#00E5C3"
+            android:textSize="18sp" />
 
         <TextView
             android:id="@+id/musicTrackLabel"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:layout_marginStart="8dp"
+            android:layout_marginStart="10dp"
             android:textColor="#FFFFFF"
-            android:text="No music"
+            android:text="Add audio"
             android:singleLine="true"
             android:ellipsize="middle" />
 
-        <Button
+        <TextView
             android:id="@+id/removeMusicButton"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="Remove"
+            android:textColor="#FF5A5A"
             android:visibility="gone" />
 
     </LinearLayout>
 
     <LinearLayout
+        android:id="@+id/addTextRow"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
-        android:padding="8dp">
+        android:gravity="center_vertical"
+        android:clickable="true"
+        android:focusable="true"
+        android:background="#1C1C1E"
+        android:paddingStart="16dp"
+        android:paddingEnd="16dp"
+        android:paddingTop="10dp"
+        android:paddingBottom="10dp"
+        android:layout_marginTop="1dp">
 
-        <Button
-            android:id="@+id/addClipButton"
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="+"
+            android:textColor="#00E5C3"
+            android:textSize="18sp" />
+
+        <TextView
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="Add Clip" />
+            android:layout_marginStart="10dp"
+            android:textColor="#FFFFFF"
+            android:text="Add text" />
 
-        <Button
-            android:id="@+id/exportButton"
-            android:layout_width="0dp"
+        <TextView
+            android:id="@+id/removeTextButton"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="Export" />
+            android:text="Remove"
+            android:textColor="#FF5A5A" />
 
     </LinearLayout>
+
+    <!-- Contextual tool panel: shown/hidden depending on which bottom tool is tapped -->
+    <LinearLayout
+        android:id="@+id/toolPanel"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:visibility="gone"
+        android:background="#0A0A0A">
+
+        <LinearLayout
+            android:id="@+id/editToolsPanel"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:padding="8dp">
+
+                <Button
+                    android:id="@+id/copyClipButton"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="Copy" />
+
+                <Button
+                    android:id="@+id/pasteClipButton"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:enabled="false"
+                    android:text="Paste" />
+
+                <Button
+                    android:id="@+id/deleteClipButton"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="Delete" />
+
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:padding="8dp">
+
+                <Button
+                    android:id="@+id/toggleTransitionButton"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Add Crossfade to Next Clip" />
+
+            </LinearLayout>
+
+        </LinearLayout>
+
+        <HorizontalScrollView
+            android:id="@+id/filterToolsPanel"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:visibility="gone"
+            android:scrollbars="none"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp"
+            android:paddingTop="8dp"
+            android:paddingBottom="8dp">
+
+            <LinearLayout
+                android:id="@+id/filterButtonContainer"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal">
+
+                <Button android:id="@+id/filterNoneButton" style="?android:attr/buttonStyleSmall" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="None" />
+                <Button android:id="@+id/filterGrayscaleButton" style="?android:attr/buttonStyleSmall" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="B&amp;W" />
+                <Button android:id="@+id/filterSepiaButton" style="?android:attr/buttonStyleSmall" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Sepia" />
+                <Button android:id="@+id/filterVividButton" style="?android:attr/buttonStyleSmall" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Vivid" />
+                <Button android:id="@+id/filterCoolButton" style="?android:attr/buttonStyleSmall" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Cool" />
+                <Button android:id="@+id/filterWarmButton" style="?android:attr/buttonStyleSmall" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Warm" />
+                <Button android:id="@+id/filterInvertButton" style="?android:attr/buttonStyleSmall" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Invert" />
+                <Button android:id="@+id/filterNoirButton" style="?android:attr/buttonStyleSmall" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Noir" />
+                <Button android:id="@+id/filterFadeButton" style="?android:attr/buttonStyleSmall" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Fade" />
+                <Button android:id="@+id/filterDramaticButton" style="?android:attr/buttonStyleSmall" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Dramatic" />
+                <Button android:id="@+id/filterPastelButton" style="?android:attr/buttonStyleSmall" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Pastel" />
+                <Button android:id="@+id/filterNightButton" style="?android:attr/buttonStyleSmall" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Night" />
+
+            </LinearLayout>
+
+        </HorizontalScrollView>
+
+    </LinearLayout>
+
+    <!-- Bottom icon toolbar, CapCut-style -->
+    <HorizontalScrollView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:scrollbars="none"
+        android:background="#000000">
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:paddingTop="8dp"
+            android:paddingBottom="8dp">
+
+            <LinearLayout android:id="@+id/toolEdit" android:layout_width="64dp" android:layout_height="wrap_content" android:orientation="vertical" android:gravity="center" android:clickable="true" android:focusable="true">
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="\u270E" android:textColor="#FFFFFF" android:textSize="18sp" />
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Edit" android:textColor="#FFFFFF" android:textSize="10sp" />
+            </LinearLayout>
+
+            <LinearLayout android:id="@+id/toolAudio" android:layout_width="64dp" android:layout_height="wrap_content" android:orientation="vertical" android:gravity="center" android:clickable="true" android:focusable="true">
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="\u266A" android:textColor="#FFFFFF" android:textSize="18sp" />
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Audio" android:textColor="#FFFFFF" android:textSize="10sp" />
+            </LinearLayout>
+
+            <LinearLayout android:id="@+id/toolText" android:layout_width="64dp" android:layout_height="wrap_content" android:orientation="vertical" android:gravity="center" android:clickable="true" android:focusable="true">
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="T" android:textColor="#FFFFFF" android:textSize="18sp" android:textStyle="bold" />
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Text" android:textColor="#FFFFFF" android:textSize="10sp" />
+            </LinearLayout>
+
+            <LinearLayout android:id="@+id/toolFilters" android:layout_width="64dp" android:layout_height="wrap_content" android:orientation="vertical" android:gravity="center" android:clickable="true" android:focusable="true">
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="\u25D1" android:textColor="#FFFFFF" android:textSize="18sp" />
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Filters" android:textColor="#FFFFFF" android:textSize="10sp" />
+            </LinearLayout>
+
+            <LinearLayout android:id="@+id/toolEffects" android:layout_width="64dp" android:layout_height="wrap_content" android:orientation="vertical" android:gravity="center" android:clickable="true" android:focusable="true">
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="\u2728" android:textColor="#FFFFFF" android:textSize="18sp" />
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Effects" android:textColor="#FFFFFF" android:textSize="10sp" />
+            </LinearLayout>
+
+            <LinearLayout android:id="@+id/toolOverlay" android:layout_width="64dp" android:layout_height="wrap_content" android:orientation="vertical" android:gravity="center" android:clickable="true" android:focusable="true">
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="\u25A6" android:textColor="#FFFFFF" android:textSize="18sp" />
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Overlay" android:textColor="#FFFFFF" android:textSize="10sp" />
+            </LinearLayout>
+
+            <LinearLayout android:id="@+id/toolCaptions" android:layout_width="64dp" android:layout_height="wrap_content" android:orientation="vertical" android:gravity="center" android:clickable="true" android:focusable="true">
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="\uD83D\uDCAC" android:textSize="18sp" />
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Captions" android:textColor="#FFFFFF" android:textSize="10sp" />
+            </LinearLayout>
+
+            <LinearLayout android:id="@+id/toolAdjust" android:layout_width="64dp" android:layout_height="wrap_content" android:orientation="vertical" android:gravity="center" android:clickable="true" android:focusable="true">
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="\u2699" android:textColor="#FFFFFF" android:textSize="18sp" />
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Adjust" android:textColor="#FFFFFF" android:textSize="10sp" />
+            </LinearLayout>
+
+            <LinearLayout android:id="@+id/toolStickers" android:layout_width="64dp" android:layout_height="wrap_content" android:orientation="vertical" android:gravity="center" android:clickable="true" android:focusable="true">
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="\u263A" android:textColor="#FFFFFF" android:textSize="18sp" />
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Stickers" android:textColor="#FFFFFF" android:textSize="10sp" />
+            </LinearLayout>
+
+            <LinearLayout android:id="@+id/toolGenerateMedia" android:layout_width="72dp" android:layout_height="wrap_content" android:orientation="vertical" android:gravity="center" android:clickable="true" android:focusable="true">
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="\u2726 AI" android:textColor="#00E5C3" android:textSize="14sp" android:textStyle="bold" />
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Generate" android:textColor="#FFFFFF" android:textSize="10sp" />
+            </LinearLayout>
+
+        </LinearLayout>
+
+    </HorizontalScrollView>
 
 </LinearLayout>
