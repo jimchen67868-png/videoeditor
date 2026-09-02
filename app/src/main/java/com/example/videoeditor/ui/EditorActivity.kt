@@ -217,7 +217,8 @@ class EditorActivity : AppCompatActivity() {
         binding.toolOverlay.setOnClickListener { Toast.makeText(this, "Overlay: not implemented in this build", Toast.LENGTH_SHORT).show() }
         binding.toolCaptions.setOnClickListener { Toast.makeText(this, "Captions: not implemented in this build", Toast.LENGTH_SHORT).show() }
         binding.toolAdjust.setOnClickListener { Toast.makeText(this, "Adjust: not implemented in this build", Toast.LENGTH_SHORT).show() }
-        binding.toolStickers.setOnClickListener { Toast.makeText(this, "Stickers: not implemented in this build", Toast.LENGTH_SHORT).show() }
+        binding.toolStickers.setOnClickListener { showToolPanel(binding.stickerToolsPanel) }
+        setupStickerButtons()
         binding.toolGenerateMedia.setOnClickListener { Toast.makeText(this, "Generate media: not implemented in this build", Toast.LENGTH_SHORT).show() }
 
         viewModel.project.observe(this) { project ->
@@ -387,6 +388,7 @@ class EditorActivity : AppCompatActivity() {
         binding.editToolsPanel.visibility = android.view.View.GONE
         binding.filterToolsPanel.visibility = android.view.View.GONE
         binding.effectToolsPanel.visibility = android.view.View.GONE
+        binding.stickerToolsPanel.visibility = android.view.View.GONE
 
         if (alreadyShown) {
             binding.toolPanel.visibility = android.view.View.GONE
@@ -394,6 +396,50 @@ class EditorActivity : AppCompatActivity() {
             panel.visibility = android.view.View.VISIBLE
             binding.toolPanel.visibility = android.view.View.VISIBLE
         }
+    }
+
+    /**
+     * Stickers are implemented as large emoji rendered through the exact same
+     * TextOverlayEffectFactory pipeline already proven working for text
+     * overlays -- an emoji is just a Unicode glyph, so this reuses 100% of
+     * the existing, tested rendering path instead of building a separate
+     * bitmap-overlay system. Each tap places a sticker at the current
+     * playhead with a short default duration, same pattern as "Add Text".
+     */
+    private fun setupStickerButtons() {
+        val emojis = listOf("\uD83D\uDE00", "\uD83D\uDE0D", "\uD83D\uDD25", "\u2764\uFE0F", "\uD83D\uDC4D",
+            "\uD83C\uDF89", "\uD83D\uDE02", "\u2B50", "\uD83D\uDCAF", "\uD83D\uDC4F",
+            "\uD83D\uDE4C", "\uD83D\uDE0E", "\uD83D\uDCAA", "\u2728", "\uD83D\uDE31", "\uD83E\uDD73")
+
+        emojis.forEach { emoji ->
+            val button = android.widget.Button(this, null, android.R.attr.buttonStyleSmall).apply {
+                text = emoji
+                textSize = 20f
+            }
+            binding.stickerButtonContainer.addView(button)
+            button.setOnClickListener { addSticker(emoji) }
+        }
+    }
+
+    private fun addSticker(emoji: String) {
+        val project = viewModel.project.value
+        if (project == null || project.clips.isEmpty()) {
+            Toast.makeText(this, "Add a clip first", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val startMs = lastKnownPlayheadMs
+        val endMs = (startMs + 3000L).coerceAtMost(project.totalDurationMs)
+        val overlay = com.example.videoeditor.model.TextOverlay(
+            id = java.util.UUID.randomUUID().toString(),
+            text = emoji,
+            startMs = startMs,
+            endMs = endMs,
+            x = 0.5f,
+            y = 0.5f,
+            sizeSp = 60f
+        )
+        viewModel.addTextOverlay(overlay)
+        Toast.makeText(this, "Sticker added", Toast.LENGTH_SHORT).show()
     }
 
     private fun updateTransitionButtonLabel() {

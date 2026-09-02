@@ -330,6 +330,25 @@
 
         </HorizontalScrollView>
 
+        <HorizontalScrollView
+            android:id="@+id/stickerToolsPanel"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:visibility="gone"
+            android:scrollbars="none"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp"
+            android:paddingTop="8dp"
+            android:paddingBottom="8dp">
+
+            <LinearLayout
+                android:id="@+id/stickerButtonContainer"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal" />
+
+        </HorizontalScrollView>
+
     </LinearLayout>
 
     <!-- Bottom icon toolbar, CapCut-style -->
