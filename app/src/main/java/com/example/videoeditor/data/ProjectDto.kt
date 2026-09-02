@@ -19,7 +19,8 @@ data class ProjectDto(
     val id: String,
     val name: String,
     val clips: List<ClipDto>,
-    val audioTrack: AudioTrackDto?
+    val audioTrack: AudioTrackDto?,
+    val textOverlays: List<TextOverlayDto>
 )
 
 data class ClipDto(
@@ -31,8 +32,7 @@ data class ClipDto(
     val filter: String,
     val volume: Float,
     val transitionToNext: String,
-    val transitionDurationMs: Long,
-    val textOverlays: List<TextOverlayDto>
+    val transitionDurationMs: Long
 )
 
 data class TextOverlayDto(
@@ -57,14 +57,16 @@ fun Project.toDto(): ProjectDto = ProjectDto(
     id = id,
     name = name,
     clips = clips.map { it.toDto() },
-    audioTrack = audioTrack?.toDto()
+    audioTrack = audioTrack?.toDto(),
+    textOverlays = textOverlays.map { it.toDto() }
 )
 
 fun ProjectDto.toModel(): Project = Project(
     id = id,
     name = name,
     clips = clips.map { it.toModel() },
-    audioTrack = audioTrack?.toModel()
+    audioTrack = audioTrack?.toModel(),
+    textOverlays = textOverlays.map { it.toModel() }
 )
 
 private fun Clip.toDto(): ClipDto = ClipDto(
@@ -76,8 +78,7 @@ private fun Clip.toDto(): ClipDto = ClipDto(
     filter = filter.name,
     volume = volume,
     transitionToNext = transitionToNext.name,
-    transitionDurationMs = transitionDurationMs,
-    textOverlays = textOverlays.map { it.toDto() }
+    transitionDurationMs = transitionDurationMs
 )
 
 private fun ClipDto.toModel(): Clip = Clip(
@@ -89,8 +90,7 @@ private fun ClipDto.toModel(): Clip = Clip(
     filter = runCatching { FilterType.valueOf(filter) }.getOrDefault(FilterType.NONE),
     volume = volume,
     transitionToNext = runCatching { TransitionType.valueOf(transitionToNext) }.getOrDefault(TransitionType.NONE),
-    transitionDurationMs = transitionDurationMs,
-    textOverlays = textOverlays.map { it.toModel() }
+    transitionDurationMs = transitionDurationMs
 )
 
 private fun TextOverlay.toDto(): TextOverlayDto = TextOverlayDto(

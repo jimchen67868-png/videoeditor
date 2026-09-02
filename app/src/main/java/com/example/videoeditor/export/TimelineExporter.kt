@@ -122,6 +122,11 @@ class TimelineExporter(private val context: Context) {
     }
 
     private fun buildVideoSequence(project: Project, settings: ExportSettings): EditedMediaItemSequence {
+        // Running sum of preceding clips' timeline durations -- needed to know
+        // where each clip sits on the GLOBAL timeline, since text overlays are
+        // now project-level with global start/end positions (see model/Timeline.kt).
+        var cumulativeGlobalStartMs = 0L
+
         val items = project.clips.mapIndexed { index, clip ->
             val mediaItem = MediaItem.Builder()
                 .setUri(clip.sourceUri)
@@ -135,7 +140,12 @@ class TimelineExporter(private val context: Context) {
 
             val videoEffects = mutableListOf<Effect>()
             FilterShaderEffect.forType(clip.filter)?.let { videoEffects += it }
-            TextOverlayEffectFactory.build(clip.textOverlays)?.let { videoEffects += it }
+
+            val clipLocalOverlays = TextOverlayEffectFactory.overlaysForWindow(
+                project.textOverlays, cumulativeGlobalStartMs, clip.timelineDurationMs
+            )
+            TextOverlayEffectFactory.build(clipLocalOverlays)?.let { videoEffects += it }
+            cumulativeGlobalStartMs += clip.timelineDurationMs
 
             // Fade in if the PREVIOUS clip requested a transition into this one;
             // fade out if THIS clip requested a transition into the next one.

@@ -43,6 +43,7 @@ class EditorActivity : AppCompatActivity() {
     // can tell "clip list actually changed" apart from "only a cosmetic field
     // like filter/text/transition changed" -- see the observer below.
     private var lastStructuralSignature: List<Triple<Uri, Long, Long>>? = null
+    private var lastKnownPlayheadMs: Long = 0L
 
     // Polls playback position while the activity is visible so the timeline
     // playhead line and the time label stay in sync with actual playback,
@@ -170,7 +171,7 @@ class EditorActivity : AppCompatActivity() {
         binding.filterNightButton.setOnClickListener { applyFilterToSelected(com.example.videoeditor.model.FilterType.NIGHT) }
 
         binding.addTextButton.setOnClickListener { showAddTextDialog() }
-        binding.removeTextButton.setOnClickListener { removeLastTextOverlayFromSelected() }
+        binding.removeTextButton.setOnClickListener { removeLastTextOverlay() }
         binding.toggleTransitionButton.setOnClickListener { toggleTransitionOnSelected() }
 
         binding.copyClipButton.setOnClickListener {
@@ -198,6 +199,7 @@ class EditorActivity : AppCompatActivity() {
         viewModel.project.observe(this) { project ->
             binding.timelineView.setClips(project.clips)
             binding.timelineView.setAudioTrack(project.audioTrack)
+            binding.timelineView.setTextOverlays(project.textOverlays)
 
             // Only rebuild the ExoPlayer playlist (stop/clear/re-add/prepare)
             // when clips actually changed structurally (added, removed,
@@ -279,6 +281,7 @@ class EditorActivity : AppCompatActivity() {
 
         binding.timelineView.setPlayheadMs(globalPositionMs)
         binding.timeLabel.text = "${formatTime(globalPositionMs)} / ${formatTime(project.totalDurationMs)}"
+        lastKnownPlayheadMs = globalPositionMs
     }
 
     private fun formatTime(ms: Long): String {
@@ -308,7 +311,15 @@ class EditorActivity : AppCompatActivity() {
         try {
             val effects = mutableListOf<androidx.media3.common.Effect>()
             com.example.videoeditor.effects.FilterShaderEffect.forType(clip.filter)?.let { effects += it }
-            com.example.videoeditor.effects.TextOverlayEffectFactory.build(clip.textOverlays)?.let { effects += it }
+
+            // Overlays are project-level with global timeline positions -- find
+            // this clip's global start (sum of preceding clips' durations) so
+            // we can pull just the overlays active during it, remapped local.
+            val clipGlobalStartMs = project.clips.take(index).sumOf { it.timelineDurationMs }
+            val clipLocalOverlays = com.example.videoeditor.effects.TextOverlayEffectFactory.overlaysForWindow(
+                project.textOverlays, clipGlobalStartMs, clip.timelineDurationMs
+            )
+            com.example.videoeditor.effects.TextOverlayEffectFactory.build(clipLocalOverlays)?.let { effects += it }
 
             // Same fade logic as TimelineExporter, so preview matches export.
             val previousClip = project.clips.getOrNull(index - 1)
@@ -423,26 +434,27 @@ class EditorActivity : AppCompatActivity() {
     }
 
     private fun showAddTextDialog() {
-        val clipId = viewModel.selectedClipId.value
         val project = viewModel.project.value
-        val clip = project?.clips?.firstOrNull { it.id == clipId }
-        if (clipId == null || clip == null) {
-            Toast.makeText(this, "Select a clip first", Toast.LENGTH_SHORT).show()
+        if (project == null || project.clips.isEmpty()) {
+            Toast.makeText(this, "Add a clip first", Toast.LENGTH_SHORT).show()
             return
         }
 
         val dialogView = layoutInflater.inflate(R.layout.dialog_text_overlay, null)
         val textInput = dialogView.findViewById<android.widget.EditText>(R.id.overlayTextInput)
+        val durationInput = dialogView.findViewById<android.widget.EditText>(R.id.overlayDurationInput)
         val colorRow = dialogView.findViewById<android.widget.LinearLayout>(R.id.colorButtonRow)
         val sizeRow = dialogView.findViewById<android.widget.LinearLayout>(R.id.sizeButtonRow)
         val posTop = dialogView.findViewById<android.widget.LinearLayout>(R.id.positionRowTop)
         val posMid = dialogView.findViewById<android.widget.LinearLayout>(R.id.positionRowMiddle)
         val posBottom = dialogView.findViewById<android.widget.LinearLayout>(R.id.positionRowBottom)
 
+        durationInput.setText("3")
+
         var selectedColor = android.graphics.Color.WHITE
         var selectedSize = 24f
         var selectedX = 0.5f
-        var selectedY = 0.85f // default: bottom-center, matching the previous hardcoded behavior
+        var selectedY = 0.85f // default: bottom-center
 
         val density = resources.displayMetrics.density
         val swatchSizePx = (36 * density).toInt()
@@ -524,18 +536,26 @@ class EditorActivity : AppCompatActivity() {
             .setView(dialogView)
             .setPositiveButton("Add") { _, _ ->
                 val text = textInput.text.toString().trim()
+                val durationSeconds = durationInput.text.toString().toFloatOrNull() ?: 3f
                 if (text.isNotEmpty()) {
+                    // Starts at the current playhead position on the GLOBAL
+                    // timeline, independent of any specific clip -- so it keeps
+                    // its own position/length even if clips get trimmed,
+                    // reordered, or deleted around it.
+                    val startMs = lastKnownPlayheadMs
+                    val endMs = (startMs + (durationSeconds * 1000).toLong())
+                        .coerceAtMost(project.totalDurationMs)
                     val overlay = com.example.videoeditor.model.TextOverlay(
                         id = java.util.UUID.randomUUID().toString(),
                         text = text,
-                        startMs = 0L,
-                        endMs = clip.timelineDurationMs,
+                        startMs = startMs,
+                        endMs = endMs,
                         x = selectedX,
                         y = selectedY,
                         colorArgb = selectedColor,
                         sizeSp = selectedSize
                     )
-                    viewModel.addTextOverlay(clipId, overlay)
+                    viewModel.addTextOverlay(overlay)
                     Toast.makeText(this, "Text added", Toast.LENGTH_SHORT).show()
                 }
             }
@@ -543,16 +563,13 @@ class EditorActivity : AppCompatActivity() {
             .show()
     }
 
-    private fun removeLastTextOverlayFromSelected() {
-        val clipId = viewModel.selectedClipId.value
-        val project = viewModel.project.value
-        val clip = project?.clips?.firstOrNull { it.id == clipId }
-        val lastOverlay = clip?.textOverlays?.lastOrNull()
-        if (clipId == null || lastOverlay == null) {
-            Toast.makeText(this, "No text overlay on selected clip", Toast.LENGTH_SHORT).show()
+    private fun removeLastTextOverlay() {
+        val lastOverlay = viewModel.project.value?.textOverlays?.lastOrNull()
+        if (lastOverlay == null) {
+            Toast.makeText(this, "No text overlay to remove", Toast.LENGTH_SHORT).show()
             return
         }
-        viewModel.removeTextOverlay(clipId, lastOverlay.id)
+        viewModel.removeTextOverlay(lastOverlay.id)
         Toast.makeText(this, "Text removed", Toast.LENGTH_SHORT).show()
     }
 

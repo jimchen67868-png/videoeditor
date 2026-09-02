@@ -112,10 +112,10 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
      */
     fun pasteClip() {
         val source = clipboardClip ?: return
-        val newClip = source.copy(
-            id = UUID.randomUUID().toString(),
-            textOverlays = source.textOverlays.map { it.copy(id = UUID.randomUUID().toString()) }
-        )
+        // Text overlays are now project-level (global timeline positions), so
+        // pasting a clip doesn't duplicate any overlays -- they weren't
+        // attached to the clip in the first place.
+        val newClip = source.copy(id = UUID.randomUUID().toString())
         applyUpdate { current ->
             val mutable = current.clips.toMutableList()
             val insertAfterIndex = mutable.indexOfFirst { it.id == _selectedClipId.value }
@@ -190,14 +190,12 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
         updateClip(clipId) { it.copy(transitionToNext = transition, transitionDurationMs = durationMs) }
     }
 
-    fun addTextOverlay(clipId: String, overlay: TextOverlay) {
-        updateClip(clipId) { it.copy(textOverlays = it.textOverlays + overlay) }
+    fun addTextOverlay(overlay: TextOverlay) {
+        applyUpdate { it.copy(textOverlays = it.textOverlays + overlay) }
     }
 
-    fun removeTextOverlay(clipId: String, overlayId: String) {
-        updateClip(clipId) { clip ->
-            clip.copy(textOverlays = clip.textOverlays.filterNot { it.id == overlayId })
-        }
+    fun removeTextOverlay(overlayId: String) {
+        applyUpdate { it.copy(textOverlays = it.textOverlays.filterNot { o -> o.id == overlayId }) }
     }
 
     fun setAudioTrack(uri: Uri) {

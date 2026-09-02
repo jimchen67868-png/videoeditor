@@ -9,6 +9,8 @@ import androidx.media3.effect.OverlaySettings
 import androidx.media3.effect.TextOverlay as Media3TextOverlay
 import com.example.videoeditor.model.TextOverlay
 import com.google.common.collect.ImmutableList
+import kotlin.math.max
+import kotlin.math.min
 
 /**
  * Converts our app-level [TextOverlay] list into a Media3 [OverlayEffect].
@@ -17,28 +19,30 @@ import com.google.common.collect.ImmutableList
  * so this runs the same in live preview and in final export -- no separate
  * "preview renderer" vs "export renderer" to keep in sync.
  *
- * FIX (previous bug -- text was added to the data model correctly but never
- * rendered): the anchor pairing was backwards. OverlaySettings has TWO
- * anchors that work together: backgroundFrameAnchor (WHERE on the video
- * frame to position things) and overlayFrameAnchor (WHICH point ON THE
- * OVERLAY BITMAP gets placed at that position). The previous code only set
- * overlayFrameAnchor to the computed x/y and left backgroundFrameAnchor at
- * its default, which -- depending on the overlay bitmap's own dimensions --
- * could push the whole overlay off the visible frame entirely (invisible
- * despite alpha being fully opaque). Fixed by setting backgroundFrameAnchor
- * to the desired screen position and overlayFrameAnchor to (0,0) (the
- * overlay bitmap's own center), so the overlay's center lands at that point
- * on the frame -- the usual intended behavior.
- *
- * Also simplified: alpha is always fully opaque for the overlay's whole
- * active window rather than time-windowed, since nothing in the UI currently
- * lets a user create a partial-duration overlay anyway (every overlay added
- * via the "Add Text" dialog spans the clip's entire duration) -- this removes
- * a presentationTimeUs-timebase assumption that wasn't worth the added risk
- * for a feature not yet exposed.
+ * Text overlays live at the PROJECT level with GLOBAL timeline positions (see
+ * model/Timeline.kt), but Media3's per-clip Effect pipeline only sees
+ * presentationTimeUs relative to THAT clip's own trimmed window. [overlaysForWindow]
+ * bridges the two: given a clip's position on the global timeline, it returns
+ * only the overlays that are actually active during that clip, remapped to
+ * clip-local ms so [build]'s alpha windowing lines up correctly.
  */
 @UnstableApi
 object TextOverlayEffectFactory {
+
+    /**
+     * Filters [all] down to overlays that overlap [windowStartMs]..[windowStartMs]+[windowDurationMs],
+     * and remaps their startMs/endMs to be relative to that window (0-based)
+     * instead of the global timeline.
+     */
+    fun overlaysForWindow(all: List<TextOverlay>, windowStartMs: Long, windowDurationMs: Long): List<TextOverlay> {
+        val windowEndMs = windowStartMs + windowDurationMs
+        return all.mapNotNull { overlay ->
+            val overlapStart = max(overlay.startMs, windowStartMs)
+            val overlapEnd = min(overlay.endMs, windowEndMs)
+            if (overlapEnd <= overlapStart) return@mapNotNull null
+            overlay.copy(startMs = overlapStart - windowStartMs, endMs = overlapEnd - windowStartMs)
+        }
+    }
 
     fun build(overlays: List<TextOverlay>): OverlayEffect? {
         if (overlays.isEmpty()) return null
@@ -49,18 +53,21 @@ object TextOverlayEffectFactory {
                 setSpan(AbsoluteSizeSpan(overlay.sizeSp.toInt(), true), 0, overlay.text.length, 0)
             }
 
-            val settings = OverlaySettings.Builder()
-                .setAlphaScale(1f)
-                // Position on the video frame (NDC: -1..1, y flipped since our
-                // model's y=0 is top like normal UI coordinates).
-                .setBackgroundFrameAnchor(overlay.x * 2 - 1f, 1f - overlay.y * 2)
-                // Which point of the overlay bitmap aligns there -- (0,0) = its own center.
-                .setOverlayFrameAnchor(0f, 0f)
-                .build()
-
             object : Media3TextOverlay() {
                 override fun getText(presentationTimeUs: Long): SpannableString = spannable
-                override fun getOverlaySettings(presentationTimeUs: Long): OverlaySettings = settings
+
+                override fun getOverlaySettings(presentationTimeUs: Long): OverlaySettings {
+                    val timeMs = presentationTimeUs / 1000
+                    val alpha = if (timeMs in overlay.startMs..overlay.endMs) 1f else 0f
+                    return OverlaySettings.Builder()
+                        .setAlphaScale(alpha)
+                        // backgroundFrameAnchor = position on the video frame;
+                        // overlayFrameAnchor = which point of the overlay bitmap
+                        // aligns there (0,0 = its own center).
+                        .setBackgroundFrameAnchor(overlay.x * 2 - 1f, 1f - overlay.y * 2)
+                        .setOverlayFrameAnchor(0f, 0f)
+                        .build()
+                }
             }
         }
 

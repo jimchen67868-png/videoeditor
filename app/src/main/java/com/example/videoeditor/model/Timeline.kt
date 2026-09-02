@@ -33,7 +33,12 @@ enum class TransitionType {
 /**
  * A text overlay burned into the video during export (and rendered live during preview).
  *
- * @param startMs / endMs are relative to the *clip's trimmed* timeline position (ms).
+ * Lives at the PROJECT level, independent of any specific clip -- startMs/endMs
+ * are positions on the whole project's global timeline, not relative to a clip.
+ * This means trimming, reordering, or deleting clips doesn't silently break or
+ * orphan an overlay's timing the way clip-scoped overlays would.
+ *
+ * @param startMs / endMs are the overlay's own active window on the GLOBAL project timeline (ms).
  * @param x / y are normalized 0f..1f positions (fraction of frame width/height).
  */
 data class TextOverlay(
@@ -67,8 +72,7 @@ data class Clip(
     val filter: FilterType = FilterType.NONE,
     val volume: Float = 1.0f,
     val transitionToNext: TransitionType = TransitionType.NONE,
-    val transitionDurationMs: Long = 500L,
-    val textOverlays: List<TextOverlay> = emptyList()
+    val transitionDurationMs: Long = 500L
 ) {
     /** Duration of this clip on the timeline, accounting for speed. */
     val timelineDurationMs: Long
@@ -93,7 +97,8 @@ data class Project(
     val id: String,
     val name: String,
     val clips: List<Clip> = emptyList(),
-    val audioTrack: AudioTrack? = null
+    val audioTrack: AudioTrack? = null,
+    val textOverlays: List<TextOverlay> = emptyList()
 ) {
     /** Total duration of the whole project, ignoring transition overlap (approximation). */
     val totalDurationMs: Long

@@ -50,6 +50,7 @@ class TimelineView @JvmOverloads constructor(
 
     private var clips: List<Clip> = emptyList()
     private var audioTrack: AudioTrack? = null
+    private var textOverlays: List<com.example.videoeditor.model.TextOverlay> = emptyList()
     private var selectedClipId: String? = null
     private var pxPerMs: Float = 0.05f // zoom level; adjust for desired timeline density
 
@@ -137,6 +138,11 @@ class TimelineView @JvmOverloads constructor(
         newClips.forEach { loadThumbnailIfNeeded(it) }
     }
 
+    fun setTextOverlays(overlays: List<com.example.videoeditor.model.TextOverlay>) {
+        textOverlays = overlays
+        invalidate()
+    }
+
     fun setAudioTrack(track: AudioTrack?) {
         audioTrack = track
         invalidate()
@@ -195,26 +201,22 @@ class TimelineView @JvmOverloads constructor(
         }
     }
 
-    /** Draws one colored segment per text overlay, positioned to match where it's active within its clip. */
+    /** Draws one colored segment per text overlay, at its own global timeline position. */
     private fun drawTextRow(canvas: Canvas) {
         val top = videoRowHeightPx + rowGapPx
         val bottom = top + textRowHeightPx
         canvas.drawRect(RectF(0f, top, width.toFloat(), bottom), trackBackgroundPaint)
 
-        var clipStartX = 0f
-        for (clip in clips) {
-            for (overlay in clip.textOverlays) {
-                val segStartX = clipStartX + overlay.startMs * pxPerMs
-                val segEndX = clipStartX + overlay.endMs * pxPerMs
-                val segRect = RectF(segStartX, top, segEndX, bottom)
-                canvas.drawRect(segRect, textSegmentPaint)
+        for (overlay in textOverlays) {
+            val segStartX = overlay.startMs * pxPerMs
+            val segEndX = overlay.endMs * pxPerMs
+            val segRect = RectF(segStartX, top, segEndX, bottom)
+            canvas.drawRect(segRect, textSegmentPaint)
 
-                canvas.save()
-                canvas.clipRect(segRect)
-                canvas.drawText(overlay.text, segStartX + 4f, bottom - 8f, trackLabelPaint)
-                canvas.restore()
-            }
-            clipStartX += clip.timelineDurationMs * pxPerMs
+            canvas.save()
+            canvas.clipRect(segRect)
+            canvas.drawText(overlay.text, segStartX + 4f, bottom - 8f, trackLabelPaint)
+            canvas.restore()
         }
     }
 
