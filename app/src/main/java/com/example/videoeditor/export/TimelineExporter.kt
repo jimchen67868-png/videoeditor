@@ -180,6 +180,9 @@ class TimelineExporter(private val context: Context) {
             val videoEffects = mutableListOf<Effect>()
             FilterShaderEffect.forType(clip.filter)?.let { videoEffects += it }
 
+            val rawClipDurationMsForEffect = clip.trimEndMs - clip.trimStartMs
+            videoEffects += com.example.videoeditor.effects.VisualEffectFactory.forType(clip.effect, rawClipDurationMsForEffect)
+
             val clipLocalOverlays = TextOverlayEffectFactory.overlaysForWindow(
                 project.textOverlays, cumulativeGlobalStartMs, clip.timelineDurationMs
             )

@@ -23,6 +23,19 @@ enum class FilterType {
     NIGHT
 }
 
+/**
+ * Animated visual effects, distinct from [FilterType] (static color grading).
+ * Each maps to a time-varying GL effect in effects/VisualEffectFactory.kt.
+ */
+enum class EffectType {
+    NONE,
+    FLASH,
+    SHAKE,
+    ZOOM_IN,
+    ZOOM_OUT,
+    PULSE
+}
+
 /** Type of transition rendered between two adjacent clips on the timeline. */
 enum class TransitionType {
     NONE,
@@ -70,6 +83,7 @@ data class Clip(
     val trimEndMs: Long,
     val speed: Float = 1.0f,
     val filter: FilterType = FilterType.NONE,
+    val effect: EffectType = EffectType.NONE,
     val volume: Float = 1.0f,
     val transitionToNext: TransitionType = TransitionType.NONE,
     val transitionDurationMs: Long = 500L

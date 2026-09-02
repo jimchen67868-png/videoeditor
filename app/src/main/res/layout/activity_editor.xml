@@ -303,6 +303,33 @@
 
         </HorizontalScrollView>
 
+        <HorizontalScrollView
+            android:id="@+id/effectToolsPanel"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:visibility="gone"
+            android:scrollbars="none"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp"
+            android:paddingTop="8dp"
+            android:paddingBottom="8dp">
+
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal">
+
+                <Button android:id="@+id/effectNoneButton" style="?android:attr/buttonStyleSmall" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="None" />
+                <Button android:id="@+id/effectFlashButton" style="?android:attr/buttonStyleSmall" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Flash" />
+                <Button android:id="@+id/effectShakeButton" style="?android:attr/buttonStyleSmall" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Shake" />
+                <Button android:id="@+id/effectZoomInButton" style="?android:attr/buttonStyleSmall" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Zoom In" />
+                <Button android:id="@+id/effectZoomOutButton" style="?android:attr/buttonStyleSmall" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Zoom Out" />
+                <Button android:id="@+id/effectPulseButton" style="?android:attr/buttonStyleSmall" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Pulse" />
+
+            </LinearLayout>
+
+        </HorizontalScrollView>
+
     </LinearLayout>
 
     <!-- Bottom icon toolbar, CapCut-style -->

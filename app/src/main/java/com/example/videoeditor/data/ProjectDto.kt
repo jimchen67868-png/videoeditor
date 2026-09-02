@@ -30,6 +30,7 @@ data class ClipDto(
     val trimEndMs: Long,
     val speed: Float,
     val filter: String,
+    val effect: String,
     val volume: Float,
     val transitionToNext: String,
     val transitionDurationMs: Long
@@ -79,6 +80,7 @@ private fun Clip.toDto(): ClipDto = ClipDto(
     trimEndMs = trimEndMs,
     speed = speed,
     filter = filter.name,
+    effect = effect.name,
     volume = volume,
     transitionToNext = transitionToNext.name,
     transitionDurationMs = transitionDurationMs
@@ -91,6 +93,7 @@ private fun ClipDto.toModel(): Clip = Clip(
     trimEndMs = trimEndMs,
     speed = speed,
     filter = runCatching { FilterType.valueOf(filter) }.getOrDefault(FilterType.NONE),
+    effect = runCatching { com.example.videoeditor.model.EffectType.valueOf(effect) }.getOrDefault(com.example.videoeditor.model.EffectType.NONE),
     volume = volume,
     transitionToNext = runCatching { TransitionType.valueOf(transitionToNext) }.getOrDefault(TransitionType.NONE),
     transitionDurationMs = transitionDurationMs

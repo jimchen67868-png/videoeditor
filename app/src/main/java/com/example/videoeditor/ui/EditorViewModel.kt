@@ -182,6 +182,10 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
         updateClip(clipId) { it.copy(filter = filter) }
     }
 
+    fun setClipEffect(clipId: String, effect: com.example.videoeditor.model.EffectType) {
+        updateClip(clipId) { it.copy(effect = effect) }
+    }
+
     fun setClipSpeed(clipId: String, speed: Float) {
         updateClip(clipId) { it.copy(speed = speed.coerceIn(0.25f, 4f)) }
     }

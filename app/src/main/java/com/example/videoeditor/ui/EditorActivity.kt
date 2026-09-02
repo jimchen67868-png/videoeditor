@@ -174,6 +174,13 @@ class EditorActivity : AppCompatActivity() {
         binding.filterPastelButton.setOnClickListener { applyFilterToSelected(com.example.videoeditor.model.FilterType.PASTEL) }
         binding.filterNightButton.setOnClickListener { applyFilterToSelected(com.example.videoeditor.model.FilterType.NIGHT) }
 
+        binding.effectNoneButton.setOnClickListener { applyEffectToSelected(com.example.videoeditor.model.EffectType.NONE) }
+        binding.effectFlashButton.setOnClickListener { applyEffectToSelected(com.example.videoeditor.model.EffectType.FLASH) }
+        binding.effectShakeButton.setOnClickListener { applyEffectToSelected(com.example.videoeditor.model.EffectType.SHAKE) }
+        binding.effectZoomInButton.setOnClickListener { applyEffectToSelected(com.example.videoeditor.model.EffectType.ZOOM_IN) }
+        binding.effectZoomOutButton.setOnClickListener { applyEffectToSelected(com.example.videoeditor.model.EffectType.ZOOM_OUT) }
+        binding.effectPulseButton.setOnClickListener { applyEffectToSelected(com.example.videoeditor.model.EffectType.PULSE) }
+
         binding.toggleTransitionButton.setOnClickListener { toggleTransitionOnSelected() }
 
         binding.copyClipButton.setOnClickListener {
@@ -204,9 +211,9 @@ class EditorActivity : AppCompatActivity() {
         // rather than silently doing nothing.
         binding.toolEdit.setOnClickListener { showToolPanel(binding.editToolsPanel) }
         binding.toolFilters.setOnClickListener { showToolPanel(binding.filterToolsPanel) }
+        binding.toolEffects.setOnClickListener { showToolPanel(binding.effectToolsPanel) }
         binding.toolAudio.setOnClickListener { pickMusic.launch("audio/*") }
         binding.toolText.setOnClickListener { showAddTextDialog() }
-        binding.toolEffects.setOnClickListener { Toast.makeText(this, "Effects: not implemented in this build", Toast.LENGTH_SHORT).show() }
         binding.toolOverlay.setOnClickListener { Toast.makeText(this, "Overlay: not implemented in this build", Toast.LENGTH_SHORT).show() }
         binding.toolCaptions.setOnClickListener { Toast.makeText(this, "Captions: not implemented in this build", Toast.LENGTH_SHORT).show() }
         binding.toolAdjust.setOnClickListener { Toast.makeText(this, "Adjust: not implemented in this build", Toast.LENGTH_SHORT).show() }
@@ -329,6 +336,9 @@ class EditorActivity : AppCompatActivity() {
             val effects = mutableListOf<androidx.media3.common.Effect>()
             com.example.videoeditor.effects.FilterShaderEffect.forType(clip.filter)?.let { effects += it }
 
+            val rawClipDurationMsForEffect = clip.trimEndMs - clip.trimStartMs
+            effects += com.example.videoeditor.effects.VisualEffectFactory.forType(clip.effect, rawClipDurationMsForEffect)
+
             // Overlays are project-level with global timeline positions -- find
             // this clip's global start (sum of preceding clips' durations) so
             // we can pull just the overlays active during it, remapped local.
@@ -376,6 +386,7 @@ class EditorActivity : AppCompatActivity() {
         val alreadyShown = panel.visibility == android.view.View.VISIBLE
         binding.editToolsPanel.visibility = android.view.View.GONE
         binding.filterToolsPanel.visibility = android.view.View.GONE
+        binding.effectToolsPanel.visibility = android.view.View.GONE
 
         if (alreadyShown) {
             binding.toolPanel.visibility = android.view.View.GONE
@@ -467,6 +478,15 @@ class EditorActivity : AppCompatActivity() {
             return
         }
         viewModel.setClipFilter(clipId, filter)
+    }
+
+    private fun applyEffectToSelected(effect: com.example.videoeditor.model.EffectType) {
+        val clipId = viewModel.selectedClipId.value
+        if (clipId == null) {
+            Toast.makeText(this, "Select a clip first", Toast.LENGTH_SHORT).show()
+            return
+        }
+        viewModel.setClipEffect(clipId, effect)
     }
 
     private fun showMusicPlacementDialog(uri: Uri) {
