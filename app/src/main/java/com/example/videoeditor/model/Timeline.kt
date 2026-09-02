@@ -80,9 +80,23 @@ data class Clip(
 }
 
 /** A background music track layered under the whole timeline. */
+/**
+ * A background music/audio track layered under the timeline.
+ *
+ * Like [TextOverlay], this is independent of any specific clip: [timelineStartMs]
+ * is WHERE on the project's global timeline it starts playing, and [durationMs]
+ * is its own length -- trimming, reordering, or deleting clips doesn't affect it.
+ *
+ * @param sourceUri the audio file.
+ * @param sourceStartMs offset INTO the audio file itself (skip the first N ms of the file).
+ * @param timelineStartMs position on the GLOBAL project timeline where playback starts.
+ * @param durationMs how long this track plays, independent of the project's total length.
+ */
 data class AudioTrack(
     val sourceUri: Uri,
-    val startMs: Long = 0L,
+    val sourceStartMs: Long = 0L,
+    val timelineStartMs: Long = 0L,
+    val durationMs: Long,
     val volume: Float = 1.0f,
     /** If true, ducks background music volume under clip dialogue automatically. */
     val duckingEnabled: Boolean = false

@@ -227,11 +227,9 @@ class TimelineView @JvmOverloads constructor(
         canvas.drawRect(RectF(0f, top, width.toFloat(), bottom), trackBackgroundPaint)
 
         val track = audioTrack ?: return
-        val totalDurationMs = clips.sumOf { it.timelineDurationMs }
-        if (totalDurationMs <= 0) return
 
-        val segStartX = track.startMs * pxPerMs
-        val segEndX = totalDurationMs * pxPerMs
+        val segStartX = track.timelineStartMs * pxPerMs
+        val segEndX = (track.timelineStartMs + track.durationMs) * pxPerMs
         if (segEndX <= segStartX) return
 
         val segRect = RectF(segStartX, top, segEndX, bottom)

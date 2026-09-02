@@ -65,8 +65,7 @@ class EditorActivity : AppCompatActivity() {
             runCatching {
                 contentResolver.takePersistableUriPermission(it, Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
-            viewModel.setAudioTrack(it)
-            Toast.makeText(this, "Music added", Toast.LENGTH_SHORT).show()
+            showMusicPlacementDialog(it)
         }
     }
 
@@ -431,6 +430,48 @@ class EditorActivity : AppCompatActivity() {
             return
         }
         viewModel.setClipFilter(clipId, filter)
+    }
+
+    private fun showMusicPlacementDialog(uri: Uri) {
+        val project = viewModel.project.value
+        if (project == null || project.clips.isEmpty()) {
+            Toast.makeText(this, "Add a clip first", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val defaultStartSeconds = lastKnownPlayheadMs / 1000f
+        val defaultDurationSeconds = ((project.totalDurationMs - lastKnownPlayheadMs).coerceAtLeast(1000L)) / 1000f
+
+        val container = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            setPadding(48, 24, 48, 24)
+        }
+        val startInput = android.widget.EditText(this).apply {
+            hint = "Start time (seconds)"
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER or android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL
+            setText(defaultStartSeconds.toString())
+        }
+        val durationInput = android.widget.EditText(this).apply {
+            hint = "Duration (seconds)"
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER or android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL
+            setText(defaultDurationSeconds.toString())
+        }
+        container.addView(startInput)
+        container.addView(durationInput)
+
+        android.app.AlertDialog.Builder(this)
+            .setTitle("Place music on timeline")
+            .setView(container)
+            .setPositiveButton("Add") { _, _ ->
+                val startSeconds = startInput.text.toString().toFloatOrNull() ?: defaultStartSeconds
+                val durationSeconds = durationInput.text.toString().toFloatOrNull() ?: defaultDurationSeconds
+                val timelineStartMs = (startSeconds * 1000).toLong().coerceAtLeast(0L)
+                val durationMs = (durationSeconds * 1000).toLong().coerceAtLeast(500L)
+                viewModel.setAudioTrack(uri, timelineStartMs, durationMs)
+                Toast.makeText(this, "Music added", Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
     }
 
     private fun showAddTextDialog() {

@@ -15,6 +15,7 @@ import com.example.videoeditor.effects.FilterShaderEffect
 import com.example.videoeditor.effects.TextOverlayEffectFactory
 import com.example.videoeditor.model.Project
 import java.io.File
+import kotlin.math.min
 
 /**
  * Turns a [Project] (our timeline model) into a rendered MP4 using Media3 Transformer.
@@ -26,6 +27,15 @@ import java.io.File
  */
 @UnstableApi
 class TimelineExporter(private val context: Context) {
+
+    companion object {
+        /** Matches the actual length of res/raw/silence_10s.wav, bundled for padding delayed music starts. */
+        private const val SILENCE_ASSET_DURATION_MS = 10_000L
+    }
+
+    /** Uri for the bundled silent-audio asset, used to pad a music track's timeline start. */
+    private fun silenceAssetUri(): android.net.Uri =
+        android.net.Uri.parse("android.resource://${context.packageName}/${com.example.videoeditor.R.raw.silence_10s}")
 
     fun interface ProgressListener {
         /** progress in 0..100, or -1 if unknown */
@@ -65,8 +75,8 @@ class TimelineExporter(private val context: Context) {
                 .setUri(audio.sourceUri)
                 .setClippingConfiguration(
                     MediaItem.ClippingConfiguration.Builder()
-                        .setStartPositionMs(audio.startMs)
-                        .setEndPositionMs(audio.startMs + project.totalDurationMs)
+                        .setStartPositionMs(audio.sourceStartMs)
+                        .setEndPositionMs(audio.sourceStartMs + audio.durationMs)
                         .build()
                 )
                 .build()
@@ -75,7 +85,32 @@ class TimelineExporter(private val context: Context) {
                 .setRemoveVideo(true)
                 .setEffects(Effects(audioProcessors, emptyList()))
                 .build()
-            sequences += EditedMediaItemSequence(audioItem)
+
+            // The music track has its own independent start position on the
+            // GLOBAL timeline (audio.timelineStartMs), not necessarily 0 --
+            // pad the sequence with silence chunks first so it starts playing
+            // at the right moment instead of always from the beginning.
+            val sequenceItems = mutableListOf<EditedMediaItem>()
+            var remainingSilenceMs = audio.timelineStartMs
+            while (remainingSilenceMs > 0) {
+                val chunkMs = min(remainingSilenceMs, SILENCE_ASSET_DURATION_MS)
+                val silenceItem = EditedMediaItem.Builder(
+                    MediaItem.Builder()
+                        .setUri(silenceAssetUri())
+                        .setClippingConfiguration(
+                            MediaItem.ClippingConfiguration.Builder()
+                                .setStartPositionMs(0)
+                                .setEndPositionMs(chunkMs)
+                                .build()
+                        )
+                        .build()
+                ).setRemoveVideo(true).build()
+                sequenceItems += silenceItem
+                remainingSilenceMs -= chunkMs
+            }
+            sequenceItems += audioItem
+
+            sequences += EditedMediaItemSequence(sequenceItems)
         }
 
         val composition = Composition.Builder(sequences).build()

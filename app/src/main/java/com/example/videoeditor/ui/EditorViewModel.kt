@@ -198,8 +198,10 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
         applyUpdate { it.copy(textOverlays = it.textOverlays.filterNot { o -> o.id == overlayId }) }
     }
 
-    fun setAudioTrack(uri: Uri) {
-        applyUpdate { it.copy(audioTrack = AudioTrack(sourceUri = uri)) }
+    fun setAudioTrack(uri: Uri, timelineStartMs: Long, durationMs: Long) {
+        applyUpdate {
+            it.copy(audioTrack = AudioTrack(sourceUri = uri, timelineStartMs = timelineStartMs, durationMs = durationMs))
+        }
     }
 
     fun setAudioTrackVolume(volume: Float) {

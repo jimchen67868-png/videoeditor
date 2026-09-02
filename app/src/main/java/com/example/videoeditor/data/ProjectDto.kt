@@ -48,7 +48,9 @@ data class TextOverlayDto(
 
 data class AudioTrackDto(
     val sourceUri: String,
-    val startMs: Long,
+    val sourceStartMs: Long,
+    val timelineStartMs: Long,
+    val durationMs: Long,
     val volume: Float,
     val duckingEnabled: Boolean
 )
@@ -104,9 +106,11 @@ private fun TextOverlayDto.toModel(): TextOverlay = TextOverlay(
 )
 
 private fun AudioTrack.toDto(): AudioTrackDto = AudioTrackDto(
-    sourceUri = sourceUri.toString(), startMs = startMs, volume = volume, duckingEnabled = duckingEnabled
+    sourceUri = sourceUri.toString(), sourceStartMs = sourceStartMs, timelineStartMs = timelineStartMs,
+    durationMs = durationMs, volume = volume, duckingEnabled = duckingEnabled
 )
 
 private fun AudioTrackDto.toModel(): AudioTrack = AudioTrack(
-    sourceUri = Uri.parse(sourceUri), startMs = startMs, volume = volume, duckingEnabled = duckingEnabled
+    sourceUri = Uri.parse(sourceUri), sourceStartMs = sourceStartMs, timelineStartMs = timelineStartMs,
+    durationMs = durationMs, volume = volume, duckingEnabled = duckingEnabled
 )
