@@ -44,7 +44,8 @@ data class TextOverlayDto(
     val x: Float,
     val y: Float,
     val colorArgb: Int,
-    val sizeSp: Float
+    val sizeSp: Float,
+    val hasBackground: Boolean
 )
 
 data class AudioTrackDto(
@@ -101,12 +102,12 @@ private fun ClipDto.toModel(): Clip = Clip(
 
 private fun TextOverlay.toDto(): TextOverlayDto = TextOverlayDto(
     id = id, text = text, startMs = startMs, endMs = endMs,
-    x = x, y = y, colorArgb = colorArgb, sizeSp = sizeSp
+    x = x, y = y, colorArgb = colorArgb, sizeSp = sizeSp, hasBackground = hasBackground
 )
 
 private fun TextOverlayDto.toModel(): TextOverlay = TextOverlay(
     id = id, text = text, startMs = startMs, endMs = endMs,
-    x = x, y = y, colorArgb = colorArgb, sizeSp = sizeSp
+    x = x, y = y, colorArgb = colorArgb, sizeSp = sizeSp, hasBackground = hasBackground
 )
 
 private fun AudioTrack.toDto(): AudioTrackDto = AudioTrackDto(

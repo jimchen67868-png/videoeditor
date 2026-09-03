@@ -198,6 +198,11 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
         applyUpdate { it.copy(textOverlays = it.textOverlays + overlay) }
     }
 
+    /** Adds several overlays at once (e.g. a generated caption sequence) as a single undo step. */
+    fun addTextOverlays(overlays: List<TextOverlay>) {
+        applyUpdate { it.copy(textOverlays = it.textOverlays + overlays) }
+    }
+
     fun removeTextOverlay(overlayId: String) {
         applyUpdate { it.copy(textOverlays = it.textOverlays.filterNot { o -> o.id == overlayId }) }
     }

@@ -230,7 +230,8 @@ class EditorActivity : AppCompatActivity() {
         binding.toolAudio.setOnClickListener { pickMusic.launch("audio/*") }
         binding.toolText.setOnClickListener { showAddTextDialog() }
         binding.toolOverlay.setOnClickListener { Toast.makeText(this, "Overlay: not implemented in this build", Toast.LENGTH_SHORT).show() }
-        binding.toolCaptions.setOnClickListener { Toast.makeText(this, "Captions: not implemented in this build", Toast.LENGTH_SHORT).show() }
+        binding.toolCaptions.setOnClickListener { showToolPanel(binding.captionsToolsPanel) }
+        binding.generateCaptionsButton.setOnClickListener { generateCaptionsFromScript() }
         binding.toolAdjust.setOnClickListener { Toast.makeText(this, "Adjust: not implemented in this build", Toast.LENGTH_SHORT).show() }
         binding.toolStickers.setOnClickListener { showToolPanel(binding.stickerToolsPanel) }
         setupStickerButtons()
@@ -531,6 +532,7 @@ class EditorActivity : AppCompatActivity() {
         binding.filterToolsPanel.visibility = android.view.View.GONE
         binding.effectToolsPanel.visibility = android.view.View.GONE
         binding.stickerToolsPanel.visibility = android.view.View.GONE
+        binding.captionsToolsPanel.visibility = android.view.View.GONE
 
         if (alreadyShown) {
             binding.toolPanel.visibility = android.view.View.GONE
@@ -582,6 +584,68 @@ class EditorActivity : AppCompatActivity() {
         )
         viewModel.addTextOverlay(overlay)
         Toast.makeText(this, "Sticker added", Toast.LENGTH_SHORT).show()
+    }
+
+    /**
+     * Splits the script into one caption per non-empty line, laid out
+     * sequentially (no overlap) starting at the current playhead, each
+     * lasting up to 2.5s (or less if the video runs out first). Styled with
+     * hasBackground=true for the classic subtitle look (white text on a
+     * semi-transparent black backdrop), distinguishing captions visually
+     * from freeform "Add Text" overlays and stickers.
+     *
+     * NOTE: this does NOT auto-transcribe the audio -- there's no speech-to-
+     * text here. Real auto-captioning would need either a cloud API (network
+     * + auth this environment can't exercise) or an on-device ML model
+     * (a large, separate undertaking). This is a fast manual authoring flow:
+     * you type the script, it handles the timing/styling/segmentation.
+     */
+    private fun generateCaptionsFromScript() {
+        val project = viewModel.project.value
+        if (project == null || project.clips.isEmpty()) {
+            Toast.makeText(this, "Add a clip first", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val lines = binding.captionsScriptInput.text.toString()
+            .split("\n")
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+
+        if (lines.isEmpty()) {
+            Toast.makeText(this, "Enter at least one line", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val perLineDurationMs = 2500L
+        var cursor = lastKnownPlayheadMs
+        val newOverlays = mutableListOf<com.example.videoeditor.model.TextOverlay>()
+
+        for (line in lines) {
+            if (cursor >= project.totalDurationMs) break
+            val endMs = (cursor + perLineDurationMs).coerceAtMost(project.totalDurationMs)
+            newOverlays += com.example.videoeditor.model.TextOverlay(
+                id = java.util.UUID.randomUUID().toString(),
+                text = line,
+                startMs = cursor,
+                endMs = endMs,
+                x = 0.5f,
+                y = 0.88f,
+                colorArgb = android.graphics.Color.WHITE,
+                sizeSp = 20f,
+                hasBackground = true
+            )
+            cursor = endMs
+        }
+
+        if (newOverlays.isEmpty()) {
+            Toast.makeText(this, "No room left on the timeline from the current playhead", Toast.LENGTH_LONG).show()
+            return
+        }
+
+        viewModel.addTextOverlays(newOverlays)
+        binding.captionsScriptInput.setText("")
+        Toast.makeText(this, "${newOverlays.size} caption(s) added", Toast.LENGTH_SHORT).show()
     }
 
     private fun updateTransitionButtonLabel() {

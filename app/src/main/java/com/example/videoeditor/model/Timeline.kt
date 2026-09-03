@@ -62,7 +62,9 @@ data class TextOverlay(
     val x: Float = 0.5f,
     val y: Float = 0.85f,
     val colorArgb: Int = 0xFFFFFFFF.toInt(),
-    val sizeSp: Float = 24f
+    val sizeSp: Float = 24f,
+    /** If true, renders a semi-transparent black backdrop behind the text -- the typical subtitle/caption look. */
+    val hasBackground: Boolean = false
 )
 
 /**

@@ -386,6 +386,39 @@
 
         </HorizontalScrollView>
 
+        <LinearLayout
+            android:id="@+id/captionsToolsPanel"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:visibility="gone"
+            android:padding="12dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="One line per caption -- each becomes a timed subtitle, starting from the current playhead."
+                android:textColor="#AAAAAA"
+                android:textSize="12sp"
+                android:layout_marginBottom="8dp" />
+
+            <EditText
+                android:id="@+id/captionsScriptInput"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minLines="3"
+                android:gravity="top"
+                android:hint="Line 1\nLine 2\nLine 3..." />
+
+            <Button
+                android:id="@+id/generateCaptionsButton"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="Generate Captions" />
+
+        </LinearLayout>
+
     </LinearLayout>
 
     <!-- Bottom icon toolbar, CapCut-style -->

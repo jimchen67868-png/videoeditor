@@ -2,6 +2,7 @@ package com.example.videoeditor.effects
 
 import android.text.SpannableString
 import android.text.style.AbsoluteSizeSpan
+import android.text.style.BackgroundColorSpan
 import android.text.style.ForegroundColorSpan
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.effect.OverlayEffect
@@ -51,6 +52,9 @@ object TextOverlayEffectFactory {
             val spannable = SpannableString(overlay.text).apply {
                 setSpan(ForegroundColorSpan(overlay.colorArgb), 0, overlay.text.length, 0)
                 setSpan(AbsoluteSizeSpan(overlay.sizeSp.toInt(), true), 0, overlay.text.length, 0)
+                if (overlay.hasBackground) {
+                    setSpan(BackgroundColorSpan(android.graphics.Color.argb(160, 0, 0, 0)), 0, overlay.text.length, 0)
+                }
             }
 
             object : Media3TextOverlay() {
