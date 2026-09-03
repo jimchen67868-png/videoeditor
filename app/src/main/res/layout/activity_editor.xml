@@ -90,6 +90,13 @@
                 android:singleLine="true"
                 android:ellipsize="end" />
 
+            <ImageView
+                android:id="@+id/overlayProxyImage"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:scaleType="fitCenter"
+                android:visibility="gone" />
+
             <View
                 android:id="@+id/overlayResizeHandle"
                 android:layout_width="28dp"
@@ -416,6 +423,30 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="8dp"
                 android:text="Generate Captions" />
+
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/overlayToolsPanel"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:visibility="gone"
+            android:padding="12dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Place an image on top of the video, like picture-in-picture. Drag it on the preview to reposition, drag its corner to resize."
+                android:textColor="#AAAAAA"
+                android:textSize="12sp"
+                android:layout_marginBottom="8dp" />
+
+            <Button
+                android:id="@+id/addImageOverlayButton"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Add Image Overlay" />
 
         </LinearLayout>
 

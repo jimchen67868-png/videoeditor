@@ -4,6 +4,7 @@ import android.net.Uri
 import com.example.videoeditor.model.AudioTrack
 import com.example.videoeditor.model.Clip
 import com.example.videoeditor.model.FilterType
+import com.example.videoeditor.model.ImageOverlay
 import com.example.videoeditor.model.Project
 import com.example.videoeditor.model.TextOverlay
 import com.example.videoeditor.model.TransitionType
@@ -20,7 +21,8 @@ data class ProjectDto(
     val name: String,
     val clips: List<ClipDto>,
     val audioTracks: List<AudioTrackDto>,
-    val textOverlays: List<TextOverlayDto>
+    val textOverlays: List<TextOverlayDto>,
+    val imageOverlays: List<ImageOverlayDto>
 )
 
 data class ClipDto(
@@ -58,12 +60,24 @@ data class AudioTrackDto(
     val duckingEnabled: Boolean
 )
 
+data class ImageOverlayDto(
+    val id: String,
+    val sourceUri: String,
+    val startMs: Long,
+    val endMs: Long,
+    val x: Float,
+    val y: Float,
+    val scale: Float,
+    val opacity: Float
+)
+
 fun Project.toDto(): ProjectDto = ProjectDto(
     id = id,
     name = name,
     clips = clips.map { it.toDto() },
     audioTracks = audioTracks.map { it.toDto() },
-    textOverlays = textOverlays.map { it.toDto() }
+    textOverlays = textOverlays.map { it.toDto() },
+    imageOverlays = imageOverlays.map { it.toDto() }
 )
 
 fun ProjectDto.toModel(): Project = Project(
@@ -71,7 +85,8 @@ fun ProjectDto.toModel(): Project = Project(
     name = name,
     clips = clips.map { it.toModel() },
     audioTracks = audioTracks.map { it.toModel() },
-    textOverlays = textOverlays.map { it.toModel() }
+    textOverlays = textOverlays.map { it.toModel() },
+    imageOverlays = imageOverlays.map { it.toModel() }
 )
 
 private fun Clip.toDto(): ClipDto = ClipDto(
@@ -118,4 +133,14 @@ private fun AudioTrack.toDto(): AudioTrackDto = AudioTrackDto(
 private fun AudioTrackDto.toModel(): AudioTrack = AudioTrack(
     id = id, sourceUri = Uri.parse(sourceUri), sourceStartMs = sourceStartMs, timelineStartMs = timelineStartMs,
     durationMs = durationMs, volume = volume, duckingEnabled = duckingEnabled
+)
+
+private fun ImageOverlay.toDto(): ImageOverlayDto = ImageOverlayDto(
+    id = id, sourceUri = sourceUri.toString(), startMs = startMs, endMs = endMs,
+    x = x, y = y, scale = scale, opacity = opacity
+)
+
+private fun ImageOverlayDto.toModel(): ImageOverlay = ImageOverlay(
+    id = id, sourceUri = Uri.parse(sourceUri), startMs = startMs, endMs = endMs,
+    x = x, y = y, scale = scale, opacity = opacity
 )

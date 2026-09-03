@@ -46,8 +46,10 @@ class EditorActivity : AppCompatActivity() {
     private var lastKnownPlayheadMs: Long = 0L
 
     // --- Drag-to-reposition / resize proxy for whichever text overlay/sticker
-    // is active at the current playhead (see setupOverlayProxyDragAndResize) ---
+    // or image overlay is active at the current playhead (see setupOverlayProxyDragAndResize) ---
+    private enum class OverlayKind { TEXT, IMAGE }
     private var activeOverlayId: String? = null
+    private var activeOverlayKind: OverlayKind? = null
     private var isDraggingOverlay = false
     private var isResizingOverlay = false
     private var dragTouchStartRawX = 0f
@@ -58,7 +60,7 @@ class EditorActivity : AppCompatActivity() {
     private var resizeTouchStartRawY = 0f
     private var resizeStartWidth = 0
     private var resizeStartHeight = 0
-    private var resizeStartSizeSp = 24f
+    private var resizeStartMetric = 24f
 
     // Polls playback position while the activity is visible so the timeline
     // playhead line and the time label stay in sync with actual playback,
@@ -81,6 +83,15 @@ class EditorActivity : AppCompatActivity() {
                 contentResolver.takePersistableUriPermission(it, Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
             showMusicPlacementDialog(it)
+        }
+    }
+
+    private val pickImageOverlay = registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        uri?.let {
+            runCatching {
+                contentResolver.takePersistableUriPermission(it, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            showImageOverlayPlacementDialog(it)
         }
     }
 
@@ -229,7 +240,8 @@ class EditorActivity : AppCompatActivity() {
         binding.toolEffects.setOnClickListener { showToolPanel(binding.effectToolsPanel) }
         binding.toolAudio.setOnClickListener { pickMusic.launch("audio/*") }
         binding.toolText.setOnClickListener { showAddTextDialog() }
-        binding.toolOverlay.setOnClickListener { Toast.makeText(this, "Overlay: not implemented in this build", Toast.LENGTH_SHORT).show() }
+        binding.toolOverlay.setOnClickListener { showToolPanel(binding.overlayToolsPanel) }
+        binding.addImageOverlayButton.setOnClickListener { pickImageOverlay.launch("image/*") }
         binding.toolCaptions.setOnClickListener { showToolPanel(binding.captionsToolsPanel) }
         binding.generateCaptionsButton.setOnClickListener { generateCaptionsFromScript() }
         binding.toolAdjust.setOnClickListener { Toast.makeText(this, "Adjust: not implemented in this build", Toast.LENGTH_SHORT).show() }
@@ -335,18 +347,45 @@ class EditorActivity : AppCompatActivity() {
      * the gesture mid-drag.
      */
     private fun syncOverlayProxy(project: com.example.videoeditor.model.Project, globalPositionMs: Long) {
-        val overlay = project.textOverlays.firstOrNull { globalPositionMs in it.startMs..it.endMs }
-        if (overlay == null) {
+        val textOverlay = project.textOverlays.firstOrNull { globalPositionMs in it.startMs..it.endMs }
+        val imageOverlay = if (textOverlay == null) {
+            project.imageOverlays.firstOrNull { globalPositionMs in it.startMs..it.endMs }
+        } else null
+
+        if (textOverlay == null && imageOverlay == null) {
             binding.overlayProxyBox.visibility = android.view.View.GONE
             activeOverlayId = null
+            activeOverlayKind = null
             return
         }
 
-        val isNewSelection = activeOverlayId != overlay.id
-        activeOverlayId = overlay.id
-        binding.overlayProxyText.text = overlay.text
-        binding.overlayProxyBox.visibility = android.view.View.VISIBLE
+        val isNewSelection: Boolean
+        val posX: Float
+        val posY: Float
 
+        if (textOverlay != null) {
+            isNewSelection = activeOverlayId != textOverlay.id || activeOverlayKind != OverlayKind.TEXT
+            activeOverlayId = textOverlay.id
+            activeOverlayKind = OverlayKind.TEXT
+            binding.overlayProxyText.visibility = android.view.View.VISIBLE
+            binding.overlayProxyImage.visibility = android.view.View.GONE
+            binding.overlayProxyText.textSize = textOverlay.sizeSp
+            binding.overlayProxyText.text = textOverlay.text
+            posX = textOverlay.x
+            posY = textOverlay.y
+        } else {
+            val img = imageOverlay!!
+            isNewSelection = activeOverlayId != img.id || activeOverlayKind != OverlayKind.IMAGE
+            activeOverlayId = img.id
+            activeOverlayKind = OverlayKind.IMAGE
+            binding.overlayProxyText.visibility = android.view.View.GONE
+            binding.overlayProxyImage.visibility = android.view.View.VISIBLE
+            binding.overlayProxyImage.setImageURI(img.sourceUri)
+            posX = img.x
+            posY = img.y
+        }
+
+        binding.overlayProxyBox.visibility = android.view.View.VISIBLE
         if (isDraggingOverlay || isResizingOverlay) return // don't reset position mid-gesture
 
         val previewWidth = binding.previewPlayerView.width
@@ -364,13 +403,13 @@ class EditorActivity : AppCompatActivity() {
                 width = boxWidthPx
                 height = boxHeightPx
             }
-            binding.overlayProxyBox.x = overlay.x * previewWidth - boxWidthPx / 2f
-            binding.overlayProxyBox.y = overlay.y * previewHeight - boxHeightPx / 2f
+            binding.overlayProxyBox.x = posX * previewWidth - boxWidthPx / 2f
+            binding.overlayProxyBox.y = posY * previewHeight - boxHeightPx / 2f
         }
     }
 
     private fun setupOverlayProxyDragAndResize() {
-        binding.overlayProxyText.setOnTouchListener { _, event ->
+        val dragListener = android.view.View.OnTouchListener { _, event ->
             when (event.actionMasked) {
                 android.view.MotionEvent.ACTION_DOWN -> {
                     isDraggingOverlay = true
@@ -393,6 +432,8 @@ class EditorActivity : AppCompatActivity() {
                 else -> false
             }
         }
+        binding.overlayProxyText.setOnTouchListener(dragListener)
+        binding.overlayProxyImage.setOnTouchListener(dragListener)
 
         binding.overlayResizeHandle.setOnTouchListener { _, event ->
             when (event.actionMasked) {
@@ -402,7 +443,11 @@ class EditorActivity : AppCompatActivity() {
                     resizeTouchStartRawY = event.rawY
                     resizeStartWidth = binding.overlayProxyBox.width
                     resizeStartHeight = binding.overlayProxyBox.height
-                    resizeStartSizeSp = currentOverlaySizeSp()
+                    resizeStartMetric = when (activeOverlayKind) {
+                        OverlayKind.TEXT -> currentOverlaySizeSp()
+                        OverlayKind.IMAGE -> currentImageOverlayScale()
+                        null -> 24f
+                    }
                     true
                 }
                 android.view.MotionEvent.ACTION_MOVE -> {
@@ -415,14 +460,18 @@ class EditorActivity : AppCompatActivity() {
                         width = newWidth
                         height = newHeight
                     }
-                    val liveScale = newHeight.toFloat() / resizeStartHeight.toFloat().coerceAtLeast(1f)
-                    binding.overlayProxyText.textSize = (resizeStartSizeSp * liveScale).coerceIn(10f, 120f)
+                    // Live visual feedback: text scales its size; the ImageView
+                    // (fitCenter) already resizes for free as the box changes.
+                    if (activeOverlayKind == OverlayKind.TEXT) {
+                        val liveScale = newHeight.toFloat() / resizeStartHeight.toFloat().coerceAtLeast(1f)
+                        binding.overlayProxyText.textSize = (resizeStartMetric * liveScale).coerceIn(10f, 120f)
+                    }
                     true
                 }
                 android.view.MotionEvent.ACTION_UP, android.view.MotionEvent.ACTION_CANCEL -> {
                     isResizingOverlay = false
-                    val scale = binding.overlayProxyBox.height.toFloat() / resizeStartHeight.toFloat().coerceAtLeast(1f)
-                    commitOverlayTransform(resizeStartSizeSp * scale)
+                    val scaleRatio = binding.overlayProxyBox.height.toFloat() / resizeStartHeight.toFloat().coerceAtLeast(1f)
+                    commitOverlayTransform(resizeStartMetric * scaleRatio)
                     true
                 }
                 else -> false
@@ -430,8 +479,9 @@ class EditorActivity : AppCompatActivity() {
         }
     }
 
-    private fun commitOverlayTransform(overrideSizeSp: Float?) {
+    private fun commitOverlayTransform(overrideMetric: Float?) {
         val overlayId = activeOverlayId ?: return
+        val kind = activeOverlayKind ?: return
         val previewWidth = binding.previewPlayerView.width
         val previewHeight = binding.previewPlayerView.height
         if (previewWidth == 0 || previewHeight == 0) return
@@ -442,14 +492,27 @@ class EditorActivity : AppCompatActivity() {
         val centerY = binding.overlayProxyBox.y + boxHeight / 2f
         val normalizedX = (centerX / previewWidth).coerceIn(0f, 1f)
         val normalizedY = (centerY / previewHeight).coerceIn(0f, 1f)
-        val sizeSp = overrideSizeSp ?: currentOverlaySizeSp()
 
-        viewModel.updateTextOverlayTransform(overlayId, normalizedX, normalizedY, sizeSp)
+        when (kind) {
+            OverlayKind.TEXT -> {
+                val sizeSp = overrideMetric ?: currentOverlaySizeSp()
+                viewModel.updateTextOverlayTransform(overlayId, normalizedX, normalizedY, sizeSp)
+            }
+            OverlayKind.IMAGE -> {
+                val scale = overrideMetric ?: currentImageOverlayScale()
+                viewModel.updateImageOverlayTransform(overlayId, normalizedX, normalizedY, scale)
+            }
+        }
     }
 
     private fun currentOverlaySizeSp(): Float {
         val id = activeOverlayId ?: return 24f
         return viewModel.project.value?.textOverlays?.firstOrNull { it.id == id }?.sizeSp ?: 24f
+    }
+
+    private fun currentImageOverlayScale(): Float {
+        val id = activeOverlayId ?: return 1f
+        return viewModel.project.value?.imageOverlays?.firstOrNull { it.id == id }?.scale ?: 1f
     }
 
     private fun formatTime(ms: Long): String {
@@ -492,6 +555,11 @@ class EditorActivity : AppCompatActivity() {
             )
             com.example.videoeditor.effects.TextOverlayEffectFactory.build(clipLocalOverlays)?.let { effects += it }
 
+            val clipLocalImageOverlays = com.example.videoeditor.effects.ImageOverlayEffectFactory.overlaysForWindow(
+                project.imageOverlays, clipGlobalStartMs, clip.timelineDurationMs
+            )
+            com.example.videoeditor.effects.ImageOverlayEffectFactory.build(this, clipLocalImageOverlays)?.let { effects += it }
+
             // Same fade logic as TimelineExporter, so preview matches export.
             val previousClip = project.clips.getOrNull(index - 1)
             val fadeInMs = if (previousClip?.transitionToNext == com.example.videoeditor.model.TransitionType.CROSSFADE) {
@@ -533,6 +601,7 @@ class EditorActivity : AppCompatActivity() {
         binding.effectToolsPanel.visibility = android.view.View.GONE
         binding.stickerToolsPanel.visibility = android.view.View.GONE
         binding.captionsToolsPanel.visibility = android.view.View.GONE
+        binding.overlayToolsPanel.visibility = android.view.View.GONE
 
         if (alreadyShown) {
             binding.toolPanel.visibility = android.view.View.GONE
@@ -739,6 +808,58 @@ class EditorActivity : AppCompatActivity() {
             return
         }
         viewModel.setClipEffect(clipId, effect)
+    }
+
+    private fun showImageOverlayPlacementDialog(uri: Uri) {
+        val project = viewModel.project.value
+        if (project == null || project.clips.isEmpty()) {
+            Toast.makeText(this, "Add a clip first", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val defaultStartSeconds = lastKnownPlayheadMs / 1000f
+        val defaultDurationSeconds = ((project.totalDurationMs - lastKnownPlayheadMs).coerceAtLeast(1000L)) / 1000f
+
+        val container = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            setPadding(48, 24, 48, 24)
+        }
+        val startInput = android.widget.EditText(this).apply {
+            hint = "Start time (seconds)"
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER or android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL
+            setText(defaultStartSeconds.toString())
+        }
+        val durationInput = android.widget.EditText(this).apply {
+            hint = "Duration (seconds)"
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER or android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL
+            setText(defaultDurationSeconds.toString())
+        }
+        container.addView(startInput)
+        container.addView(durationInput)
+
+        android.app.AlertDialog.Builder(this)
+            .setTitle("Place image on timeline")
+            .setView(container)
+            .setPositiveButton("Add") { _, _ ->
+                val startSeconds = startInput.text.toString().toFloatOrNull() ?: defaultStartSeconds
+                val durationSeconds = durationInput.text.toString().toFloatOrNull() ?: defaultDurationSeconds
+                val startMs = (startSeconds * 1000).toLong().coerceAtLeast(0L)
+                val endMs = (startMs + (durationSeconds * 1000).toLong()).coerceAtMost(project.totalDurationMs)
+                val overlay = com.example.videoeditor.model.ImageOverlay(
+                    id = java.util.UUID.randomUUID().toString(),
+                    sourceUri = uri,
+                    startMs = startMs,
+                    endMs = endMs,
+                    x = 0.5f,
+                    y = 0.5f,
+                    scale = 1f,
+                    opacity = 1f
+                )
+                viewModel.addImageOverlay(overlay)
+                Toast.makeText(this, "Image overlay added", Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
     }
 
     private fun showMusicPlacementDialog(uri: Uri) {

@@ -187,6 +187,12 @@ class TimelineExporter(private val context: Context) {
                 project.textOverlays, cumulativeGlobalStartMs, clip.timelineDurationMs
             )
             TextOverlayEffectFactory.build(clipLocalOverlays)?.let { videoEffects += it }
+
+            val clipLocalImageOverlays = com.example.videoeditor.effects.ImageOverlayEffectFactory.overlaysForWindow(
+                project.imageOverlays, cumulativeGlobalStartMs, clip.timelineDurationMs
+            )
+            com.example.videoeditor.effects.ImageOverlayEffectFactory.build(context, clipLocalImageOverlays)?.let { videoEffects += it }
+
             cumulativeGlobalStartMs += clip.timelineDurationMs
 
             // Fade in if the PREVIOUS clip requested a transition into this one;

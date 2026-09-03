@@ -124,12 +124,34 @@ data class AudioTrack(
  * This whole object is what gets persisted (see data/ProjectDao) and what
  * TimelineExporter consumes to build the final Media3 Composition.
  */
+/**
+ * An image ("picture-in-picture" style) overlay placed on the video, independent
+ * of any specific clip -- same global-timeline pattern as [TextOverlay].
+ *
+ * @param sourceUri the image file.
+ * @param startMs / endMs active window on the GLOBAL project timeline (ms).
+ * @param x / y normalized 0f..1f position (fraction of frame width/height) of the overlay's own center.
+ * @param scale relative size, 1f = roughly a third of the frame width (see ImageOverlayEffectFactory).
+ * @param opacity 0f (invisible) to 1f (fully opaque).
+ */
+data class ImageOverlay(
+    val id: String,
+    val sourceUri: Uri,
+    val startMs: Long,
+    val endMs: Long,
+    val x: Float = 0.5f,
+    val y: Float = 0.5f,
+    val scale: Float = 1f,
+    val opacity: Float = 1f
+)
+
 data class Project(
     val id: String,
     val name: String,
     val clips: List<Clip> = emptyList(),
     val audioTracks: List<AudioTrack> = emptyList(),
-    val textOverlays: List<TextOverlay> = emptyList()
+    val textOverlays: List<TextOverlay> = emptyList(),
+    val imageOverlays: List<ImageOverlay> = emptyList()
 ) {
     /** Total duration of the whole project, ignoring transition overlap (approximation). */
     val totalDurationMs: Long

@@ -203,6 +203,22 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
         applyUpdate { it.copy(textOverlays = it.textOverlays + overlays) }
     }
 
+    fun addImageOverlay(overlay: com.example.videoeditor.model.ImageOverlay) {
+        applyUpdate { it.copy(imageOverlays = it.imageOverlays + overlay) }
+    }
+
+    fun removeImageOverlay(overlayId: String) {
+        applyUpdate { it.copy(imageOverlays = it.imageOverlays.filterNot { o -> o.id == overlayId }) }
+    }
+
+    fun updateImageOverlayTransform(overlayId: String, x: Float, y: Float, scale: Float) {
+        applyUpdate { current ->
+            current.copy(imageOverlays = current.imageOverlays.map {
+                if (it.id == overlayId) it.copy(x = x.coerceIn(0f, 1f), y = y.coerceIn(0f, 1f), scale = scale.coerceIn(0.1f, 5f)) else it
+            })
+        }
+    }
+
     fun removeTextOverlay(overlayId: String) {
         applyUpdate { it.copy(textOverlays = it.textOverlays.filterNot { o -> o.id == overlayId }) }
     }
