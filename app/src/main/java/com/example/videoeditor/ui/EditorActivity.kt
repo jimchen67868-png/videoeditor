@@ -161,6 +161,15 @@ class EditorActivity : AppCompatActivity() {
             override fun onTrimGestureEnd() {
                 viewModel.endBatchEdit()
             }
+
+            override fun onTextOverlaySelected(overlayId: String) {
+                viewModel.selectTextOverlay(overlayId)
+                Toast.makeText(this@EditorActivity, "Text/sticker selected", Toast.LENGTH_SHORT).show()
+            }
+
+            override fun onTextOverlayTrimmed(overlayId: String, newStartMs: Long, newEndMs: Long) {
+                viewModel.trimTextOverlayLive(overlayId, newStartMs, newEndMs)
+            }
         }
 
         binding.closeButton.setOnClickListener { finish() }
@@ -186,6 +195,9 @@ class EditorActivity : AppCompatActivity() {
         viewModel.canUndo.observe(this) { binding.undoButton.isEnabled = it; binding.undoButton.alpha = if (it) 1f else 0.4f }
         viewModel.canRedo.observe(this) { binding.redoButton.isEnabled = it; binding.redoButton.alpha = if (it) 1f else 0.4f }
         viewModel.selectedClipId.observe(this) { updateTransitionButtonLabel() }
+        viewModel.selectedOverlayId.observe(this) { overlayId ->
+            binding.removeTextButton.text = if (overlayId != null) "Remove Selected" else "Remove Last"
+        }
 
         binding.filterGrayscaleButton.setOnClickListener { applyFilterToSelected(com.example.videoeditor.model.FilterType.GRAYSCALE) }
         binding.filterSepiaButton.setOnClickListener { applyFilterToSelected(com.example.videoeditor.model.FilterType.SEPIA) }
@@ -1035,12 +1047,15 @@ class EditorActivity : AppCompatActivity() {
     }
 
     private fun removeLastTextOverlay() {
-        val lastOverlay = viewModel.project.value?.textOverlays?.lastOrNull()
-        if (lastOverlay == null) {
+        val project = viewModel.project.value
+        val selectedId = viewModel.selectedOverlayId.value
+        val target = project?.textOverlays?.firstOrNull { it.id == selectedId } ?: project?.textOverlays?.lastOrNull()
+        if (target == null) {
             Toast.makeText(this, "No text overlay to remove", Toast.LENGTH_SHORT).show()
             return
         }
-        viewModel.removeTextOverlay(lastOverlay.id)
+        viewModel.removeTextOverlay(target.id)
+        if (selectedId == target.id) viewModel.selectTextOverlay(null)
         Toast.makeText(this, "Text removed", Toast.LENGTH_SHORT).show()
     }
 

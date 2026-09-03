@@ -15,6 +15,7 @@ import android.view.View
 import android.widget.HorizontalScrollView
 import com.example.videoeditor.model.AudioTrack
 import com.example.videoeditor.model.Clip
+import com.example.videoeditor.model.TextOverlay
 import java.util.concurrent.Executors
 import kotlin.math.max
 import kotlin.math.min
@@ -23,15 +24,17 @@ import kotlin.math.min
  * Multi-track timeline strip:
  *   - video row: clips proportional to duration, with drag handles for
  *     trimming and real video-frame thumbnails.
- *   - text row: a colored segment per text overlay, positioned/sized to
- *     match where that overlay is active within its clip.
+ *   - text row: a colored segment per text overlay (this also covers
+ *     "stickers", which are just large-emoji TextOverlays under the hood),
+ *     selectable by tap and trimmable via the same drag-handle mechanism as
+ *     video clips, just operating on the overlay's own start/end instead.
  *   - music row: a single segment showing the background music track's
  *     span relative to the whole project.
  *
  * Must be hosted directly inside a HorizontalScrollView for content wider
  * than the screen to be reachable -- this view reports its true content
  * width via onMeasure, AND auto-scrolls that container itself when a trim
- * handle is dragged near the visible edge.
+ * handle (of either kind) is dragged near the visible edge.
  */
 class TimelineView @JvmOverloads constructor(
     context: Context,
@@ -44,14 +47,17 @@ class TimelineView @JvmOverloads constructor(
         fun onPlayheadMoved(positionMs: Long)
         fun onTrimGestureStart() {}
         fun onTrimGestureEnd() {}
+        fun onTextOverlaySelected(overlayId: String) {}
+        fun onTextOverlayTrimmed(overlayId: String, newStartMs: Long, newEndMs: Long) {}
     }
 
     var listener: Listener? = null
 
     private var clips: List<Clip> = emptyList()
     private var audioTracks: List<AudioTrack> = emptyList()
-    private var textOverlays: List<com.example.videoeditor.model.TextOverlay> = emptyList()
+    private var textOverlays: List<TextOverlay> = emptyList()
     private var selectedClipId: String? = null
+    private var selectedOverlayId: String? = null
     private var pxPerMs: Float = 0.05f // zoom level; adjust for desired timeline density
 
     // --- Row heights (video row on top, text and music rows below it) ---
@@ -84,9 +90,15 @@ class TimelineView @JvmOverloads constructor(
 
     // Handle hit target sized in dp so it's actually grabbable on high-density screens.
     private val handleWidthPx = 24f * resources.displayMetrics.density
+    // Overlay segments are shorter (text row is thinner than the video row), so
+    // their handles are a bit narrower to still leave room to tap the segment itself.
+    private val overlayHandleWidthPx = 16f * resources.displayMetrics.density
 
     private var draggingHandle: Handle? = null
     private data class Handle(val clip: Clip, val isStart: Boolean, val originalMs: Long, val downX: Float)
+
+    private var draggingOverlayHandle: OverlayHandle? = null
+    private data class OverlayHandle(val overlay: TextOverlay, val isStart: Boolean, val originalMs: Long, val downX: Float)
 
     // Thumbnail loading: one representative frame per clip, generated off
     // the main thread and cached by clip id. Re-generated only when a
@@ -96,7 +108,7 @@ class TimelineView @JvmOverloads constructor(
     private val executor = Executors.newFixedThreadPool(2)
     private val mainHandler = Handler(Looper.getMainLooper())
 
-    // --- Auto-scroll while dragging a handle near the visible edge ---
+    // --- Auto-scroll while dragging a handle (clip or overlay) near the visible edge ---
     private var scrollViewParent: HorizontalScrollView? = null
     private val edgeThresholdPx = 48f * resources.displayMetrics.density
     private val autoScrollStepPx = (10f * resources.displayMetrics.density).toInt()
@@ -109,13 +121,13 @@ class TimelineView @JvmOverloads constructor(
     private val autoScrollRunnable = object : Runnable {
         override fun run() {
             val scrollView = scrollViewParent ?: return
-            if (draggingHandle == null || autoScrollDirection == 0) return
+            if (!isDraggingAnyHandle() || autoScrollDirection == 0) return
 
             scrollView.scrollBy(autoScrollDirection * autoScrollStepPx, 0)
             // Recompute the drag position using the new scroll offset, since the
             // finger hasn't necessarily moved (no fresh MotionEvent is coming).
             val newLocalX = lastTouchXInScrollView + scrollView.scrollX
-            updateTrimFromX(newLocalX)
+            updateDragFromX(newLocalX)
 
             mainHandler.postDelayed(this, 16L)
         }
@@ -138,7 +150,7 @@ class TimelineView @JvmOverloads constructor(
         newClips.forEach { loadThumbnailIfNeeded(it) }
     }
 
-    fun setTextOverlays(overlays: List<com.example.videoeditor.model.TextOverlay>) {
+    fun setTextOverlays(overlays: List<TextOverlay>) {
         textOverlays = overlays
         invalidate()
     }
@@ -201,7 +213,7 @@ class TimelineView @JvmOverloads constructor(
         }
     }
 
-    /** Draws one colored segment per text overlay, at its own global timeline position. */
+    /** Draws one colored segment per text overlay/sticker, selectable and trimmable like a clip. */
     private fun drawTextRow(canvas: Canvas) {
         val top = videoRowHeightPx + rowGapPx
         val bottom = top + textRowHeightPx
@@ -217,6 +229,12 @@ class TimelineView @JvmOverloads constructor(
             canvas.clipRect(segRect)
             canvas.drawText(overlay.text, segStartX + 4f, bottom - 8f, trackLabelPaint)
             canvas.restore()
+
+            if (overlay.id == selectedOverlayId) {
+                canvas.drawRect(RectF(segStartX + 2f, top + 2f, segEndX - 2f, bottom - 2f), selectedBorderPaint)
+                canvas.drawRect(segStartX, top, segStartX + overlayHandleWidthPx, bottom, handlePaint)
+                canvas.drawRect(segEndX - overlayHandleWidthPx, top, segEndX, bottom, handlePaint)
+            }
         }
     }
 
@@ -244,23 +262,43 @@ class TimelineView @JvmOverloads constructor(
     override fun onTouchEvent(event: MotionEvent): Boolean {
         when (event.action) {
             MotionEvent.ACTION_DOWN -> {
-                // Clip selection / trim handles only apply within the video row;
-                // the text/music rows below are visualization-only for now.
-                if (event.y <= videoRowHeightPx) {
-                    val hit = findHandleAt(event.x)
-                    if (hit != null) {
-                        draggingHandle = hit
-                        parent.requestDisallowInterceptTouchEvent(true)
-                        listener?.onTrimGestureStart()
-                        updateLastTouchInScrollView(event.x)
-                        return true
+                val textRowTop = videoRowHeightPx + rowGapPx
+                val textRowBottom = textRowTop + textRowHeightPx
+
+                when {
+                    event.y <= videoRowHeightPx -> {
+                        val hit = findHandleAt(event.x)
+                        if (hit != null) {
+                            draggingHandle = hit
+                            parent.requestDisallowInterceptTouchEvent(true)
+                            listener?.onTrimGestureStart()
+                            updateLastTouchInScrollView(event.x)
+                            return true
+                        }
+                        val clip = findClipAt(event.x)
+                        if (clip != null) {
+                            selectedClipId = clip.id
+                            listener?.onClipSelected(clip.id)
+                            invalidate()
+                            return true
+                        }
                     }
-                    val clip = findClipAt(event.x)
-                    if (clip != null) {
-                        selectedClipId = clip.id
-                        listener?.onClipSelected(clip.id)
-                        invalidate()
-                        return true
+                    event.y in textRowTop..textRowBottom -> {
+                        val overlayHit = findOverlayHandleAt(event.x)
+                        if (overlayHit != null) {
+                            draggingOverlayHandle = overlayHit
+                            parent.requestDisallowInterceptTouchEvent(true)
+                            listener?.onTrimGestureStart()
+                            updateLastTouchInScrollView(event.x)
+                            return true
+                        }
+                        val overlay = findOverlayAt(event.x)
+                        if (overlay != null) {
+                            selectedOverlayId = overlay.id
+                            listener?.onTextOverlaySelected(overlay.id)
+                            invalidate()
+                            return true
+                        }
                     }
                 }
                 listener?.onPlayheadMoved((event.x / pxPerMs).toLong())
@@ -268,19 +306,20 @@ class TimelineView @JvmOverloads constructor(
             }
 
             MotionEvent.ACTION_MOVE -> {
-                if (draggingHandle != null) {
+                if (isDraggingAnyHandle()) {
                     updateLastTouchInScrollView(event.x)
                     updateAutoScrollDirection(event.x)
-                    updateTrimFromX(event.x)
+                    updateDragFromX(event.x)
                 }
                 return true
             }
 
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                if (draggingHandle != null) {
+                if (isDraggingAnyHandle()) {
                     listener?.onTrimGestureEnd()
                 }
                 draggingHandle = null
+                draggingOverlayHandle = null
                 stopAutoScroll()
                 parent.requestDisallowInterceptTouchEvent(false)
                 return true
@@ -288,6 +327,8 @@ class TimelineView @JvmOverloads constructor(
         }
         return super.onTouchEvent(event)
     }
+
+    private fun isDraggingAnyHandle(): Boolean = draggingHandle != null || draggingOverlayHandle != null
 
     /** Converts a local-view X into the ScrollView's own (scroll-offset-independent) coordinate space. */
     private fun updateLastTouchInScrollView(localX: Float) {
@@ -322,8 +363,13 @@ class TimelineView @JvmOverloads constructor(
         mainHandler.removeCallbacks(autoScrollRunnable)
     }
 
-    /** Shared trim-calculation logic, used both by real touch moves and by the auto-scroll tick. */
-    private fun updateTrimFromX(x: Float) {
+    /** Dispatches to whichever kind of handle (clip or overlay) is currently being dragged. */
+    private fun updateDragFromX(x: Float) {
+        if (draggingHandle != null) updateClipTrimFromX(x)
+        if (draggingOverlayHandle != null) updateOverlayTrimFromX(x)
+    }
+
+    private fun updateClipTrimFromX(x: Float) {
         val handle = draggingHandle ?: return
         val pixelDelta = x - handle.downX
         val msDelta = (pixelDelta / pxPerMs).toLong()
@@ -338,6 +384,23 @@ class TimelineView @JvmOverloads constructor(
             newEnd = max(handle.clip.trimStartMs + 100, handle.originalMs + msDelta)
         }
         listener?.onClipTrimmed(handle.clip.id, newStart, newEnd)
+    }
+
+    private fun updateOverlayTrimFromX(x: Float) {
+        val handle = draggingOverlayHandle ?: return
+        val pixelDelta = x - handle.downX
+        val msDelta = (pixelDelta / pxPerMs).toLong()
+
+        val newStart: Long
+        val newEnd: Long
+        if (handle.isStart) {
+            newStart = max(0L, min(handle.overlay.endMs - 200, handle.originalMs + msDelta))
+            newEnd = handle.overlay.endMs
+        } else {
+            newStart = handle.overlay.startMs
+            newEnd = max(handle.overlay.startMs + 200, handle.originalMs + msDelta)
+        }
+        listener?.onTextOverlayTrimmed(handle.overlay.id, newStart, newEnd)
     }
 
     private fun clipStartX(target: Clip): Float {
@@ -366,6 +429,21 @@ class TimelineView @JvmOverloads constructor(
         return when {
             xPos in startX..(startX + handleWidthPx) -> Handle(selected, true, selected.trimStartMs, xPos)
             xPos in (startX + width - handleWidthPx)..(startX + width) -> Handle(selected, false, selected.trimEndMs, xPos)
+            else -> null
+        }
+    }
+
+    private fun findOverlayAt(xPos: Float): TextOverlay? {
+        return textOverlays.firstOrNull { xPos in (it.startMs * pxPerMs)..(it.endMs * pxPerMs) }
+    }
+
+    private fun findOverlayHandleAt(xPos: Float): OverlayHandle? {
+        val selected = textOverlays.firstOrNull { it.id == selectedOverlayId } ?: return null
+        val startX = selected.startMs * pxPerMs
+        val endX = selected.endMs * pxPerMs
+        return when {
+            xPos in startX..(startX + overlayHandleWidthPx) -> OverlayHandle(selected, true, selected.startMs, xPos)
+            xPos in (endX - overlayHandleWidthPx)..endX -> OverlayHandle(selected, false, selected.endMs, xPos)
             else -> null
         }
     }

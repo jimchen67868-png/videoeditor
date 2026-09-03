@@ -37,6 +37,9 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
     private val _selectedClipId = MutableLiveData<String?>(null)
     val selectedClipId: LiveData<String?> = _selectedClipId
 
+    private val _selectedOverlayId = MutableLiveData<String?>(null)
+    val selectedOverlayId: LiveData<String?> = _selectedOverlayId
+
     private val _exportProgress = MutableLiveData<Int>(-1)
     val exportProgress: LiveData<Int> = _exportProgress
 
@@ -156,6 +159,22 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
             }
         )
         scheduleAutoSave()
+    }
+
+    /** Live (no-undo-history) update for dragging an overlay's trim handle; pair with beginBatchEdit/endBatchEdit. */
+    fun trimTextOverlayLive(overlayId: String, newStartMs: Long, newEndMs: Long) {
+        val current = _project.value ?: return
+        _project.value = current.copy(
+            textOverlays = current.textOverlays.map {
+                if (it.id == overlayId) it.copy(startMs = newStartMs, endMs = newEndMs) else it
+            }
+        )
+        scheduleAutoSave()
+    }
+
+    fun selectTextOverlay(overlayId: String?) {
+        // Selection is UI state, not an edit -- doesn't go through undo history.
+        _selectedOverlayId.value = overlayId
     }
 
     private var batchEditBaseline: Project? = null
