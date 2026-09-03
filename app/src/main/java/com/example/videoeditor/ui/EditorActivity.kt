@@ -45,6 +45,21 @@ class EditorActivity : AppCompatActivity() {
     private var lastStructuralSignature: List<Triple<Uri, Long, Long>>? = null
     private var lastKnownPlayheadMs: Long = 0L
 
+    // --- Drag-to-reposition / resize proxy for whichever text overlay/sticker
+    // is active at the current playhead (see setupOverlayProxyDragAndResize) ---
+    private var activeOverlayId: String? = null
+    private var isDraggingOverlay = false
+    private var isResizingOverlay = false
+    private var dragTouchStartRawX = 0f
+    private var dragTouchStartRawY = 0f
+    private var dragBoxStartX = 0f
+    private var dragBoxStartY = 0f
+    private var resizeTouchStartRawX = 0f
+    private var resizeTouchStartRawY = 0f
+    private var resizeStartWidth = 0
+    private var resizeStartHeight = 0
+    private var resizeStartSizeSp = 24f
+
     // Polls playback position while the activity is visible so the timeline
     // playhead line and the time label stay in sync with actual playback,
     // not just with manual scrubbing.
@@ -219,6 +234,7 @@ class EditorActivity : AppCompatActivity() {
         binding.toolAdjust.setOnClickListener { Toast.makeText(this, "Adjust: not implemented in this build", Toast.LENGTH_SHORT).show() }
         binding.toolStickers.setOnClickListener { showToolPanel(binding.stickerToolsPanel) }
         setupStickerButtons()
+        setupOverlayProxyDragAndResize()
         binding.toolGenerateMedia.setOnClickListener { Toast.makeText(this, "Generate media: not implemented in this build", Toast.LENGTH_SHORT).show() }
 
         viewModel.project.observe(this) { project ->
@@ -307,6 +323,132 @@ class EditorActivity : AppCompatActivity() {
         binding.timelineView.setPlayheadMs(globalPositionMs)
         binding.timeLabel.text = "${formatTime(globalPositionMs)} / ${formatTime(project.totalDurationMs)}"
         lastKnownPlayheadMs = globalPositionMs
+        syncOverlayProxy(project, globalPositionMs)
+    }
+
+    /**
+     * Shows/positions the draggable proxy box for whichever text overlay or
+     * sticker is active at [globalPositionMs], hiding it if none is active.
+     * Skips repositioning while the user is actively dragging/resizing so
+     * this periodic sync (called from the position poller) doesn't fight
+     * the gesture mid-drag.
+     */
+    private fun syncOverlayProxy(project: com.example.videoeditor.model.Project, globalPositionMs: Long) {
+        val overlay = project.textOverlays.firstOrNull { globalPositionMs in it.startMs..it.endMs }
+        if (overlay == null) {
+            binding.overlayProxyBox.visibility = android.view.View.GONE
+            activeOverlayId = null
+            return
+        }
+
+        val isNewSelection = activeOverlayId != overlay.id
+        activeOverlayId = overlay.id
+        binding.overlayProxyText.text = overlay.text
+        binding.overlayProxyBox.visibility = android.view.View.VISIBLE
+
+        if (isDraggingOverlay || isResizingOverlay) return // don't reset position mid-gesture
+
+        val previewWidth = binding.previewPlayerView.width
+        val previewHeight = binding.previewPlayerView.height
+        if (previewWidth == 0 || previewHeight == 0) return // not laid out yet
+
+        // Only snap to the overlay's stored position when we just switched to
+        // it -- otherwise leave the box where the user last dragged it within
+        // this same active window (position already committed to the model,
+        // this just avoids a visible jump every poll tick).
+        if (isNewSelection) {
+            val boxWidthPx = (120 * resources.displayMetrics.density).toInt()
+            val boxHeightPx = (60 * resources.displayMetrics.density).toInt()
+            binding.overlayProxyBox.layoutParams = binding.overlayProxyBox.layoutParams.apply {
+                width = boxWidthPx
+                height = boxHeightPx
+            }
+            binding.overlayProxyBox.x = overlay.x * previewWidth - boxWidthPx / 2f
+            binding.overlayProxyBox.y = overlay.y * previewHeight - boxHeightPx / 2f
+        }
+    }
+
+    private fun setupOverlayProxyDragAndResize() {
+        binding.overlayProxyText.setOnTouchListener { _, event ->
+            when (event.actionMasked) {
+                android.view.MotionEvent.ACTION_DOWN -> {
+                    isDraggingOverlay = true
+                    dragTouchStartRawX = event.rawX
+                    dragTouchStartRawY = event.rawY
+                    dragBoxStartX = binding.overlayProxyBox.x
+                    dragBoxStartY = binding.overlayProxyBox.y
+                    true
+                }
+                android.view.MotionEvent.ACTION_MOVE -> {
+                    binding.overlayProxyBox.x = dragBoxStartX + (event.rawX - dragTouchStartRawX)
+                    binding.overlayProxyBox.y = dragBoxStartY + (event.rawY - dragTouchStartRawY)
+                    true
+                }
+                android.view.MotionEvent.ACTION_UP, android.view.MotionEvent.ACTION_CANCEL -> {
+                    isDraggingOverlay = false
+                    commitOverlayTransform(null)
+                    true
+                }
+                else -> false
+            }
+        }
+
+        binding.overlayResizeHandle.setOnTouchListener { _, event ->
+            when (event.actionMasked) {
+                android.view.MotionEvent.ACTION_DOWN -> {
+                    isResizingOverlay = true
+                    resizeTouchStartRawX = event.rawX
+                    resizeTouchStartRawY = event.rawY
+                    resizeStartWidth = binding.overlayProxyBox.width
+                    resizeStartHeight = binding.overlayProxyBox.height
+                    resizeStartSizeSp = currentOverlaySizeSp()
+                    true
+                }
+                android.view.MotionEvent.ACTION_MOVE -> {
+                    val dx = event.rawX - resizeTouchStartRawX
+                    val dy = event.rawY - resizeTouchStartRawY
+                    val minSizePx = (30 * resources.displayMetrics.density).toInt()
+                    val newWidth = (resizeStartWidth + dx).toInt().coerceAtLeast(minSizePx)
+                    val newHeight = (resizeStartHeight + dy).toInt().coerceAtLeast(minSizePx)
+                    binding.overlayProxyBox.layoutParams = binding.overlayProxyBox.layoutParams.apply {
+                        width = newWidth
+                        height = newHeight
+                    }
+                    val liveScale = newHeight.toFloat() / resizeStartHeight.toFloat().coerceAtLeast(1f)
+                    binding.overlayProxyText.textSize = (resizeStartSizeSp * liveScale).coerceIn(10f, 120f)
+                    true
+                }
+                android.view.MotionEvent.ACTION_UP, android.view.MotionEvent.ACTION_CANCEL -> {
+                    isResizingOverlay = false
+                    val scale = binding.overlayProxyBox.height.toFloat() / resizeStartHeight.toFloat().coerceAtLeast(1f)
+                    commitOverlayTransform(resizeStartSizeSp * scale)
+                    true
+                }
+                else -> false
+            }
+        }
+    }
+
+    private fun commitOverlayTransform(overrideSizeSp: Float?) {
+        val overlayId = activeOverlayId ?: return
+        val previewWidth = binding.previewPlayerView.width
+        val previewHeight = binding.previewPlayerView.height
+        if (previewWidth == 0 || previewHeight == 0) return
+
+        val boxWidth = binding.overlayProxyBox.width
+        val boxHeight = binding.overlayProxyBox.height
+        val centerX = binding.overlayProxyBox.x + boxWidth / 2f
+        val centerY = binding.overlayProxyBox.y + boxHeight / 2f
+        val normalizedX = (centerX / previewWidth).coerceIn(0f, 1f)
+        val normalizedY = (centerY / previewHeight).coerceIn(0f, 1f)
+        val sizeSp = overrideSizeSp ?: currentOverlaySizeSp()
+
+        viewModel.updateTextOverlayTransform(overlayId, normalizedX, normalizedY, sizeSp)
+    }
+
+    private fun currentOverlaySizeSp(): Float {
+        val id = activeOverlayId ?: return 24f
+        return viewModel.project.value?.textOverlays?.firstOrNull { it.id == id }?.sizeSp ?: 24f
     }
 
     private fun formatTime(ms: Long): String {

@@ -202,6 +202,15 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
         applyUpdate { it.copy(textOverlays = it.textOverlays.filterNot { o -> o.id == overlayId }) }
     }
 
+    /** Updates a text overlay/sticker's position and size after a drag/resize gesture on the preview. */
+    fun updateTextOverlayTransform(overlayId: String, x: Float, y: Float, sizeSp: Float) {
+        applyUpdate { current ->
+            current.copy(textOverlays = current.textOverlays.map {
+                if (it.id == overlayId) it.copy(x = x.coerceIn(0f, 1f), y = y.coerceIn(0f, 1f), sizeSp = sizeSp.coerceIn(10f, 120f)) else it
+            })
+        }
+    }
+
     fun addAudioTrack(uri: Uri, timelineStartMs: Long, durationMs: Long) {
         val newTrack = AudioTrack(
             id = UUID.randomUUID().toString(),

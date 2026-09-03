@@ -56,13 +56,50 @@
 
     </LinearLayout>
 
-    <!-- Preview -->
-    <androidx.media3.ui.PlayerView
-        android:id="@+id/previewPlayerView"
+    <!-- Preview, with a draggable/resizable proxy box for whichever text
+         overlay/sticker is active at the current playhead. Text overlays are
+         baked into the video's rendered pixels via Media3 GL compositing, not
+         separate Android views, so this proxy is a stand-in: the user drags/
+         resizes IT, and on release the final position/size is written back
+         into the overlay's data model, which the actual GL effect then reads. -->
+    <FrameLayout
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_weight="1"
-        app:use_controller="true" />
+        android:layout_weight="1">
+
+        <androidx.media3.ui.PlayerView
+            android:id="@+id/previewPlayerView"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            app:use_controller="true" />
+
+        <FrameLayout
+            android:id="@+id/overlayProxyBox"
+            android:layout_width="120dp"
+            android:layout_height="60dp"
+            android:background="#33FFFFFF"
+            android:visibility="gone">
+
+            <TextView
+                android:id="@+id/overlayProxyText"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:gravity="center"
+                android:textColor="#FFFFFF"
+                android:textSize="16sp"
+                android:singleLine="true"
+                android:ellipsize="end" />
+
+            <View
+                android:id="@+id/overlayResizeHandle"
+                android:layout_width="28dp"
+                android:layout_height="28dp"
+                android:layout_gravity="bottom|end"
+                android:background="#FFFFFF" />
+
+        </FrameLayout>
+
+    </FrameLayout>
 
     <!-- Compact control row: undo/redo -->
     <LinearLayout
