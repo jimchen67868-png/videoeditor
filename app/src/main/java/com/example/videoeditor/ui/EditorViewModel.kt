@@ -217,6 +217,15 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
         applyUpdate { it.copy(textOverlays = it.textOverlays + overlay) }
     }
 
+    /** Edits an existing overlay's text/color/size/position in place (a discrete edit, one undo step). */
+    fun updateTextOverlayContent(overlayId: String, text: String, x: Float, y: Float, colorArgb: Int, sizeSp: Float) {
+        applyUpdate { current ->
+            current.copy(textOverlays = current.textOverlays.map {
+                if (it.id == overlayId) it.copy(text = text, x = x, y = y, colorArgb = colorArgb, sizeSp = sizeSp) else it
+            })
+        }
+    }
+
     /** Adds several overlays at once (e.g. a generated caption sequence) as a single undo step. */
     fun addTextOverlays(overlays: List<TextOverlay>) {
         applyUpdate { it.copy(textOverlays = it.textOverlays + overlays) }

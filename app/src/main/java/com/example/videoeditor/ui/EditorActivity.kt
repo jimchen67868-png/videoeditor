@@ -187,6 +187,7 @@ class EditorActivity : AppCompatActivity() {
             Toast.makeText(this, "Music removed", Toast.LENGTH_SHORT).show()
         }
         binding.addTextRow.setOnClickListener { showAddTextDialog() }
+        binding.editTextButton.setOnClickListener { showEditTextDialog() }
         binding.removeTextButton.setOnClickListener { removeLastTextOverlay() }
 
         binding.undoButton.setOnClickListener { viewModel.undo() }
@@ -917,11 +918,33 @@ class EditorActivity : AppCompatActivity() {
     }
 
     private fun showAddTextDialog() {
+        showTextOverlayDialog(existingOverlay = null)
+    }
+
+    private fun showEditTextDialog() {
+        val selectedId = viewModel.selectedOverlayId.value
+        val existing = viewModel.project.value?.textOverlays?.firstOrNull { it.id == selectedId }
+        if (existing == null) {
+            Toast.makeText(this, "Select a text/sticker on the timeline first", Toast.LENGTH_SHORT).show()
+            return
+        }
+        showTextOverlayDialog(existingOverlay = existing)
+    }
+
+    /**
+     * Shared dialog for both creating a new overlay and editing an existing
+     * one's text/color/size/position. In edit mode, timing (start/duration)
+     * is left alone -- that's adjusted via dragging the overlay's trim
+     * handles directly on the timeline instead, to avoid two separate,
+     * possibly-conflicting ways of changing the same thing.
+     */
+    private fun showTextOverlayDialog(existingOverlay: com.example.videoeditor.model.TextOverlay?) {
         val project = viewModel.project.value
         if (project == null || project.clips.isEmpty()) {
             Toast.makeText(this, "Add a clip first", Toast.LENGTH_SHORT).show()
             return
         }
+        val isEditing = existingOverlay != null
 
         val dialogView = layoutInflater.inflate(R.layout.dialog_text_overlay, null)
         val textInput = dialogView.findViewById<android.widget.EditText>(R.id.overlayTextInput)
@@ -932,12 +955,18 @@ class EditorActivity : AppCompatActivity() {
         val posMid = dialogView.findViewById<android.widget.LinearLayout>(R.id.positionRowMiddle)
         val posBottom = dialogView.findViewById<android.widget.LinearLayout>(R.id.positionRowBottom)
 
-        durationInput.setText("3")
+        textInput.setText(existingOverlay?.text ?: "")
+        if (isEditing) {
+            // Timing is edited via timeline drag handles instead, not this dialog.
+            durationInput.visibility = android.view.View.GONE
+        } else {
+            durationInput.setText("3")
+        }
 
-        var selectedColor = android.graphics.Color.WHITE
-        var selectedSize = 24f
-        var selectedX = 0.5f
-        var selectedY = 0.85f // default: bottom-center
+        var selectedColor = existingOverlay?.colorArgb ?: android.graphics.Color.WHITE
+        var selectedSize = existingOverlay?.sizeSp ?: 24f
+        var selectedX = existingOverlay?.x ?: 0.5f
+        var selectedY = existingOverlay?.y ?: 0.85f // default: bottom-center
 
         val density = resources.displayMetrics.density
         val swatchSizePx = (36 * density).toInt()
@@ -1015,12 +1044,17 @@ class EditorActivity : AppCompatActivity() {
         }
 
         android.app.AlertDialog.Builder(this)
-            .setTitle("Add text overlay")
+            .setTitle(if (isEditing) "Edit text overlay" else "Add text overlay")
             .setView(dialogView)
-            .setPositiveButton("Add") { _, _ ->
+            .setPositiveButton(if (isEditing) "Save" else "Add") { _, _ ->
                 val text = textInput.text.toString().trim()
-                val durationSeconds = durationInput.text.toString().toFloatOrNull() ?: 3f
-                if (text.isNotEmpty()) {
+                if (text.isEmpty()) return@setPositiveButton
+
+                if (isEditing) {
+                    viewModel.updateTextOverlayContent(existingOverlay!!.id, text, selectedX, selectedY, selectedColor, selectedSize)
+                    Toast.makeText(this, "Text updated", Toast.LENGTH_SHORT).show()
+                } else {
+                    val durationSeconds = durationInput.text.toString().toFloatOrNull() ?: 3f
                     // Starts at the current playhead position on the GLOBAL
                     // timeline, independent of any specific clip -- so it keeps
                     // its own position/length even if clips get trimmed,
