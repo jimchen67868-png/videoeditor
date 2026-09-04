@@ -462,6 +462,7 @@
 
     <!-- Bottom icon toolbar, CapCut-style -->
     <HorizontalScrollView
+        android:id="@+id/mainToolbarScrollView"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:scrollbars="none"
@@ -522,6 +523,71 @@
             <LinearLayout android:id="@+id/toolGenerateMedia" android:layout_width="72dp" android:layout_height="wrap_content" android:orientation="vertical" android:gravity="center" android:clickable="true" android:focusable="true">
                 <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="\u2726 AI" android:textColor="#00E5C3" android:textSize="14sp" android:textStyle="bold" />
                 <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Generate" android:textColor="#FFFFFF" android:textSize="10sp" />
+            </LinearLayout>
+
+        </LinearLayout>
+
+    </HorizontalScrollView>
+
+    <!-- Text-mode sub-toolbar, shown instead of the main toolbar when "Text" is
+         tapped, mirroring CapCut: a back arrow returns to the main toolbar. -->
+    <HorizontalScrollView
+        android:id="@+id/textSubToolbar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:scrollbars="none"
+        android:background="#000000"
+        android:visibility="gone">
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:paddingTop="8dp"
+            android:paddingBottom="8dp">
+
+            <LinearLayout android:id="@+id/textToolBack" android:layout_width="56dp" android:layout_height="wrap_content" android:orientation="vertical" android:gravity="center" android:clickable="true" android:focusable="true">
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="\u2039" android:textColor="#FFFFFF" android:textSize="22sp" />
+            </LinearLayout>
+
+            <LinearLayout android:id="@+id/textToolAiFx" android:layout_width="64dp" android:layout_height="wrap_content" android:orientation="vertical" android:gravity="center" android:clickable="true" android:focusable="true">
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="\u2728" android:textColor="#FFFFFF" android:textSize="18sp" />
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="AI text FX" android:textColor="#FFFFFF" android:textSize="10sp" />
+            </LinearLayout>
+
+            <LinearLayout android:id="@+id/textToolAddText" android:layout_width="64dp" android:layout_height="wrap_content" android:orientation="vertical" android:gravity="center" android:clickable="true" android:focusable="true">
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="A+" android:textColor="#FFFFFF" android:textSize="18sp" android:textStyle="bold" />
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Add text" android:textColor="#FFFFFF" android:textSize="10sp" />
+            </LinearLayout>
+
+            <LinearLayout android:id="@+id/textToolAutoCaptions" android:layout_width="72dp" android:layout_height="wrap_content" android:orientation="vertical" android:gravity="center" android:clickable="true" android:focusable="true">
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="\uD83D\uDCAC" android:textSize="18sp" />
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Auto Captions" android:textColor="#FFFFFF" android:textSize="10sp" />
+            </LinearLayout>
+
+            <LinearLayout android:id="@+id/textToolStickers" android:layout_width="64dp" android:layout_height="wrap_content" android:orientation="vertical" android:gravity="center" android:clickable="true" android:focusable="true">
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="\u263A" android:textColor="#FFFFFF" android:textSize="18sp" />
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Stickers" android:textColor="#FFFFFF" android:textSize="10sp" />
+            </LinearLayout>
+
+            <LinearLayout android:id="@+id/textToolDraw" android:layout_width="64dp" android:layout_height="wrap_content" android:orientation="vertical" android:gravity="center" android:clickable="true" android:focusable="true">
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="\u270F" android:textColor="#FFFFFF" android:textSize="18sp" />
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Draw" android:textColor="#FFFFFF" android:textSize="10sp" />
+            </LinearLayout>
+
+            <LinearLayout android:id="@+id/textToolTemplate" android:layout_width="72dp" android:layout_height="wrap_content" android:orientation="vertical" android:gravity="center" android:clickable="true" android:focusable="true">
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="\uD83D\uDCC4" android:textSize="18sp" />
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Text template" android:textColor="#FFFFFF" android:textSize="10sp" />
+            </LinearLayout>
+
+            <LinearLayout android:id="@+id/textToolTextToAudio" android:layout_width="72dp" android:layout_height="wrap_content" android:orientation="vertical" android:gravity="center" android:clickable="true" android:focusable="true">
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="\uD83D\uDD0A" android:textSize="18sp" />
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Text to audio" android:textColor="#FFFFFF" android:textSize="10sp" />
+            </LinearLayout>
+
+            <LinearLayout android:id="@+id/textToolAutoLyrics" android:layout_width="72dp" android:layout_height="wrap_content" android:orientation="vertical" android:gravity="center" android:clickable="true" android:focusable="true">
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="\uD83C\uDFB5" android:textSize="18sp" />
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Auto lyrics" android:textColor="#FFFFFF" android:textSize="10sp" />
             </LinearLayout>
 
         </LinearLayout>

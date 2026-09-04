@@ -252,7 +252,16 @@ class EditorActivity : AppCompatActivity() {
         binding.toolFilters.setOnClickListener { showToolPanel(binding.filterToolsPanel) }
         binding.toolEffects.setOnClickListener { showToolPanel(binding.effectToolsPanel) }
         binding.toolAudio.setOnClickListener { pickMusic.launch("audio/*") }
-        binding.toolText.setOnClickListener { showAddTextDialog() }
+        binding.toolText.setOnClickListener { showTextSubToolbar() }
+        binding.textToolBack.setOnClickListener { hideTextSubToolbar() }
+        binding.textToolAddText.setOnClickListener { showAddTextDialog() }
+        binding.textToolAutoCaptions.setOnClickListener { showToolPanel(binding.captionsToolsPanel) }
+        binding.textToolStickers.setOnClickListener { showToolPanel(binding.stickerToolsPanel) }
+        binding.textToolAiFx.setOnClickListener { Toast.makeText(this, "AI text FX: not implemented in this build", Toast.LENGTH_SHORT).show() }
+        binding.textToolDraw.setOnClickListener { Toast.makeText(this, "Draw: not implemented in this build", Toast.LENGTH_SHORT).show() }
+        binding.textToolTemplate.setOnClickListener { Toast.makeText(this, "Text template: not implemented in this build", Toast.LENGTH_SHORT).show() }
+        binding.textToolTextToAudio.setOnClickListener { Toast.makeText(this, "Text to audio: not implemented in this build", Toast.LENGTH_SHORT).show() }
+        binding.textToolAutoLyrics.setOnClickListener { Toast.makeText(this, "Auto lyrics: not implemented in this build", Toast.LENGTH_SHORT).show() }
         binding.toolOverlay.setOnClickListener { showToolPanel(binding.overlayToolsPanel) }
         binding.addImageOverlayButton.setOnClickListener { pickImageOverlay.launch("image/*") }
         binding.toolCaptions.setOnClickListener { showToolPanel(binding.captionsToolsPanel) }
@@ -599,6 +608,19 @@ class EditorActivity : AppCompatActivity() {
             // playback down with it. Export (the source of truth) is unaffected.
             Toast.makeText(this, "Live preview effect couldn't be applied: ${e.message}", Toast.LENGTH_SHORT).show()
         }
+    }
+
+    /** Switches the bottom toolbar to the text-specific sub-menu (CapCut-style), hiding the main one. */
+    private fun showTextSubToolbar() {
+        binding.mainToolbarScrollView.visibility = android.view.View.GONE
+        binding.textSubToolbar.visibility = android.view.View.VISIBLE
+        // Any open contextual panel belongs to the main toolbar's tools -- close it too.
+        binding.toolPanel.visibility = android.view.View.GONE
+    }
+
+    private fun hideTextSubToolbar() {
+        binding.textSubToolbar.visibility = android.view.View.GONE
+        binding.mainToolbarScrollView.visibility = android.view.View.VISIBLE
     }
 
     /**

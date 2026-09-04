@@ -78,7 +78,7 @@ class TimelineView @JvmOverloads constructor(
     private val bitmapPaint = Paint().apply { isFilterBitmap = true }
 
     private val trackBackgroundPaint = Paint().apply { color = Color.parseColor("#161617") }
-    private val textSegmentPaint = Paint().apply { color = Color.parseColor("#4CAF50") }
+    private val textSegmentPaint = Paint().apply { color = Color.parseColor("#FF9800") }
     private val musicSegmentPaint = Paint().apply { color = Color.parseColor("#2196F3") }
     private val trackLabelPaint = Paint().apply {
         color = Color.WHITE
