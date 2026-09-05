@@ -170,6 +170,24 @@ class EditorActivity : AppCompatActivity() {
             override fun onTextOverlayTrimmed(overlayId: String, newStartMs: Long, newEndMs: Long) {
                 viewModel.trimTextOverlayLive(overlayId, newStartMs, newEndMs)
             }
+
+            override fun onAudioTrackSelected(trackId: String) {
+                viewModel.selectAudioTrack(trackId)
+                Toast.makeText(this@EditorActivity, "Music track selected", Toast.LENGTH_SHORT).show()
+            }
+
+            override fun onAudioTrackTrimmed(trackId: String, newTimelineStartMs: Long, newDurationMs: Long) {
+                viewModel.trimAudioTrackLive(trackId, newTimelineStartMs, newDurationMs)
+            }
+
+            override fun onImageOverlaySelected(overlayId: String) {
+                viewModel.selectImageOverlay(overlayId)
+                Toast.makeText(this@EditorActivity, "Image overlay selected", Toast.LENGTH_SHORT).show()
+            }
+
+            override fun onImageOverlayTrimmed(overlayId: String, newStartMs: Long, newEndMs: Long) {
+                viewModel.trimImageOverlayLive(overlayId, newStartMs, newEndMs)
+            }
         }
 
         binding.closeButton.setOnClickListener { finish() }
@@ -183,8 +201,16 @@ class EditorActivity : AppCompatActivity() {
         // Inline "Add audio" / "Add text" rows below the timeline, CapCut-style.
         binding.addAudioRow.setOnClickListener { pickMusic.launch("audio/*") }
         binding.removeMusicButton.setOnClickListener {
-            viewModel.removeLastAudioTrack()
-            Toast.makeText(this, "Music removed", Toast.LENGTH_SHORT).show()
+            val selectedId = viewModel.selectedAudioTrackId.value
+            val target = viewModel.project.value?.audioTracks?.firstOrNull { it.id == selectedId }
+                ?: viewModel.project.value?.audioTracks?.lastOrNull()
+            if (target != null) {
+                viewModel.removeAudioTrack(target.id)
+                if (selectedId == target.id) viewModel.selectAudioTrack(null)
+                Toast.makeText(this, "Music removed", Toast.LENGTH_SHORT).show()
+            } else {
+                Toast.makeText(this, "No music track to remove", Toast.LENGTH_SHORT).show()
+            }
         }
         binding.addTextRow.setOnClickListener { showAddTextDialog() }
         binding.editTextButton.setOnClickListener { showEditTextDialog() }
@@ -264,6 +290,18 @@ class EditorActivity : AppCompatActivity() {
         binding.textToolAutoLyrics.setOnClickListener { Toast.makeText(this, "Auto lyrics: not implemented in this build", Toast.LENGTH_SHORT).show() }
         binding.toolOverlay.setOnClickListener { showToolPanel(binding.overlayToolsPanel) }
         binding.addImageOverlayButton.setOnClickListener { pickImageOverlay.launch("image/*") }
+        binding.removeImageOverlayButton.setOnClickListener {
+            val selectedId = viewModel.selectedImageOverlayId.value
+            val target = viewModel.project.value?.imageOverlays?.firstOrNull { it.id == selectedId }
+                ?: viewModel.project.value?.imageOverlays?.lastOrNull()
+            if (target != null) {
+                viewModel.removeImageOverlay(target.id)
+                if (selectedId == target.id) viewModel.selectImageOverlay(null)
+                Toast.makeText(this, "Image overlay removed", Toast.LENGTH_SHORT).show()
+            } else {
+                Toast.makeText(this, "No image overlay to remove", Toast.LENGTH_SHORT).show()
+            }
+        }
         binding.toolCaptions.setOnClickListener { showToolPanel(binding.captionsToolsPanel) }
         binding.generateCaptionsButton.setOnClickListener { generateCaptionsFromScript() }
         binding.toolAdjust.setOnClickListener { Toast.makeText(this, "Adjust: not implemented in this build", Toast.LENGTH_SHORT).show() }
@@ -276,6 +314,7 @@ class EditorActivity : AppCompatActivity() {
             binding.timelineView.setClips(project.clips)
             binding.timelineView.setAudioTracks(project.audioTracks)
             binding.timelineView.setTextOverlays(project.textOverlays)
+            binding.timelineView.setImageOverlays(project.imageOverlays)
 
             // Only rebuild the ExoPlayer playlist (stop/clear/re-add/prepare)
             // when clips actually changed structurally (added, removed,

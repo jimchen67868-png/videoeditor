@@ -40,6 +40,12 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
     private val _selectedOverlayId = MutableLiveData<String?>(null)
     val selectedOverlayId: LiveData<String?> = _selectedOverlayId
 
+    private val _selectedAudioTrackId = MutableLiveData<String?>(null)
+    val selectedAudioTrackId: LiveData<String?> = _selectedAudioTrackId
+
+    private val _selectedImageOverlayId = MutableLiveData<String?>(null)
+    val selectedImageOverlayId: LiveData<String?> = _selectedImageOverlayId
+
     private val _exportProgress = MutableLiveData<Int>(-1)
     val exportProgress: LiveData<Int> = _exportProgress
 
@@ -175,6 +181,36 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
     fun selectTextOverlay(overlayId: String?) {
         // Selection is UI state, not an edit -- doesn't go through undo history.
         _selectedOverlayId.value = overlayId
+    }
+
+    fun selectAudioTrack(trackId: String?) {
+        _selectedAudioTrackId.value = trackId
+    }
+
+    fun selectImageOverlay(overlayId: String?) {
+        _selectedImageOverlayId.value = overlayId
+    }
+
+    /** Live (no-undo-history) update for dragging a music track's trim handle; pair with beginBatchEdit/endBatchEdit. */
+    fun trimAudioTrackLive(trackId: String, newTimelineStartMs: Long, newDurationMs: Long) {
+        val current = _project.value ?: return
+        _project.value = current.copy(
+            audioTracks = current.audioTracks.map {
+                if (it.id == trackId) it.copy(timelineStartMs = newTimelineStartMs, durationMs = newDurationMs) else it
+            }
+        )
+        scheduleAutoSave()
+    }
+
+    /** Live (no-undo-history) update for dragging an image overlay's trim handle; pair with beginBatchEdit/endBatchEdit. */
+    fun trimImageOverlayLive(overlayId: String, newStartMs: Long, newEndMs: Long) {
+        val current = _project.value ?: return
+        _project.value = current.copy(
+            imageOverlays = current.imageOverlays.map {
+                if (it.id == overlayId) it.copy(startMs = newStartMs, endMs = newEndMs) else it
+            }
+        )
+        scheduleAutoSave()
     }
 
     private var batchEditBaseline: Project? = null

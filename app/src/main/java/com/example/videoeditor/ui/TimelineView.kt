@@ -15,6 +15,7 @@ import android.view.View
 import android.widget.HorizontalScrollView
 import com.example.videoeditor.model.AudioTrack
 import com.example.videoeditor.model.Clip
+import com.example.videoeditor.model.ImageOverlay
 import com.example.videoeditor.model.TextOverlay
 import java.util.concurrent.Executors
 import kotlin.math.max
@@ -24,19 +25,22 @@ import kotlin.math.min
  * Multi-track timeline strip:
  *   - video row: clips proportional to duration, with drag handles for
  *     trimming and real video-frame thumbnails.
- *   - text lanes: ONE ROW PER text overlay (this also covers "stickers",
- *     which are just large-emoji TextOverlays under the hood) -- matches
- *     CapCut, where each caption/sticker gets its own stacked lane rather
- *     than sharing a single row. Each lane is independently selectable by
- *     tap and trimmable via the same drag-handle mechanism as video clips.
- *   - music row: a single segment showing the background music track's
- *     span relative to the whole project.
+ *   - one stacked lane PER text overlay (covers "stickers" too, which are
+ *     large-emoji TextOverlays under the hood), PER music track, and PER
+ *     image overlay -- matching CapCut's one-row-per-item layout. Every
+ *     lane is independently selectable by tap and trimmable via the same
+ *     drag-handle mechanism as video clips.
+ *
+ * Internally these three item kinds share one generic lane-layout/hit-test
+ * path (see [TrackItem]) to avoid tripling the same code, while the public
+ * [Listener] still exposes one pair of callbacks per kind for clarity at
+ * the call site.
  *
  * Must be hosted directly inside a HorizontalScrollView for content wider
  * than the screen to be reachable -- this view reports its true content
- * width AND height via onMeasure (height grows with the number of text
- * overlays), AND auto-scrolls the HorizontalScrollView when a trim handle
- * (of either kind) is dragged near the visible edge.
+ * width AND height via onMeasure (height grows with the number of items in
+ * any lane group), AND auto-scrolls the HorizontalScrollView when a trim
+ * handle is dragged near the visible edge.
  */
 class TimelineView @JvmOverloads constructor(
     context: Context,
@@ -51,22 +55,40 @@ class TimelineView @JvmOverloads constructor(
         fun onTrimGestureEnd() {}
         fun onTextOverlaySelected(overlayId: String) {}
         fun onTextOverlayTrimmed(overlayId: String, newStartMs: Long, newEndMs: Long) {}
+        fun onAudioTrackSelected(trackId: String) {}
+        fun onAudioTrackTrimmed(trackId: String, newTimelineStartMs: Long, newDurationMs: Long) {}
+        fun onImageOverlaySelected(overlayId: String) {}
+        fun onImageOverlayTrimmed(overlayId: String, newStartMs: Long, newEndMs: Long) {}
     }
 
     var listener: Listener? = null
 
+    private enum class TrackKind { TEXT, MUSIC, IMAGE }
+
+    /** Generic lane item used for layout/hit-testing across all three overlay-like tracks. */
+    private data class TrackItem(val id: String, val startMs: Long, val endMs: Long, val label: String, val kind: TrackKind)
+
     private var clips: List<Clip> = emptyList()
     private var audioTracks: List<AudioTrack> = emptyList()
     private var textOverlays: List<TextOverlay> = emptyList()
+    private var imageOverlays: List<ImageOverlay> = emptyList()
     private var selectedClipId: String? = null
-    private var selectedOverlayId: String? = null
+    private var selectedItemId: String? = null // selection is shared across text/music/image since IDs are UUIDs (never collide)
     private var pxPerMs: Float = 0.05f // zoom level; adjust for desired timeline density
+
+    /** All lane items in draw/hit-test order: text overlays, then music tracks, then image overlays. */
+    private fun buildTrackItems(): List<TrackItem> {
+        val items = mutableListOf<TrackItem>()
+        textOverlays.forEach { items += TrackItem(it.id, it.startMs, it.endMs, it.text, TrackKind.TEXT) }
+        audioTracks.forEach { items += TrackItem(it.id, it.timelineStartMs, it.timelineStartMs + it.durationMs, "\u266A Music", TrackKind.MUSIC) }
+        imageOverlays.forEach { items += TrackItem(it.id, it.startMs, it.endMs, "\uD83D\uDDBC Image", TrackKind.IMAGE) }
+        return items
+    }
 
     // --- Row heights ---
     private val videoRowHeightPx = 80f * resources.displayMetrics.density
-    private val laneHeightPx = 32f * resources.displayMetrics.density // one per text overlay
+    private val laneHeightPx = 32f * resources.displayMetrics.density // one per lane item
     private val laneGapPx = 2f * resources.displayMetrics.density
-    private val musicRowHeightPx = 28f * resources.displayMetrics.density
     private val rowGapPx = 2f * resources.displayMetrics.density
 
     private val clipPaint = Paint().apply { color = Color.parseColor("#3A3A3C") }
@@ -83,25 +105,32 @@ class TimelineView @JvmOverloads constructor(
     private val trackBackgroundPaint = Paint().apply { color = Color.parseColor("#161617") }
     private val textSegmentPaint = Paint().apply { color = Color.parseColor("#FF9800") }
     private val musicSegmentPaint = Paint().apply { color = Color.parseColor("#2196F3") }
+    private val imageSegmentPaint = Paint().apply { color = Color.parseColor("#AB47BC") }
     private val trackLabelPaint = Paint().apply {
         color = Color.WHITE
         isAntiAlias = true
         textSize = 11f * resources.displayMetrics.density
     }
 
+    private fun segmentPaintFor(kind: TrackKind): Paint = when (kind) {
+        TrackKind.TEXT -> textSegmentPaint
+        TrackKind.MUSIC -> musicSegmentPaint
+        TrackKind.IMAGE -> imageSegmentPaint
+    }
+
     private var playheadMs: Long = 0L
 
     // Handle hit target sized in dp so it's actually grabbable on high-density screens.
     private val handleWidthPx = 24f * resources.displayMetrics.density
-    // Overlay lanes are shorter than the video row, so their handles are a bit
+    // Lane items are shorter than the video row, so their handles are a bit
     // narrower to still leave room to tap the segment itself.
-    private val overlayHandleWidthPx = 16f * resources.displayMetrics.density
+    private val laneHandleWidthPx = 16f * resources.displayMetrics.density
 
     private var draggingHandle: Handle? = null
     private data class Handle(val clip: Clip, val isStart: Boolean, val originalMs: Long, val downX: Float)
 
-    private var draggingOverlayHandle: OverlayHandle? = null
-    private data class OverlayHandle(val overlay: TextOverlay, val isStart: Boolean, val originalMs: Long, val downX: Float)
+    private var draggingLaneHandle: LaneHandle? = null
+    private data class LaneHandle(val item: TrackItem, val isStart: Boolean, val originalMs: Long, val downX: Float)
 
     // Thumbnail loading: one representative frame per clip, generated off
     // the main thread and cached by clip id. Re-generated only when a
@@ -111,7 +140,7 @@ class TimelineView @JvmOverloads constructor(
     private val executor = Executors.newFixedThreadPool(2)
     private val mainHandler = Handler(Looper.getMainLooper())
 
-    // --- Auto-scroll while dragging a handle (clip or overlay) near the visible edge ---
+    // --- Auto-scroll while dragging a handle (clip or lane item) near the visible edge ---
     private var scrollViewParent: HorizontalScrollView? = null
     private val edgeThresholdPx = 48f * resources.displayMetrics.density
     private val autoScrollStepPx = (10f * resources.displayMetrics.density).toInt()
@@ -155,12 +184,19 @@ class TimelineView @JvmOverloads constructor(
 
     fun setTextOverlays(overlays: List<TextOverlay>) {
         textOverlays = overlays
-        requestLayout() // number of lanes (and thus total height) depends on overlay count
+        requestLayout() // number of lanes (and thus total height) depends on item count
         invalidate()
     }
 
     fun setAudioTracks(tracks: List<AudioTrack>) {
         audioTracks = tracks
+        requestLayout()
+        invalidate()
+    }
+
+    fun setImageOverlays(overlays: List<ImageOverlay>) {
+        imageOverlays = overlays
+        requestLayout()
         invalidate()
     }
 
@@ -169,23 +205,16 @@ class TimelineView @JvmOverloads constructor(
         invalidate()
     }
 
-    /** Height of the block of one-lane-per-overlay rows, 0 if there are no overlays. */
-    private fun textLanesHeight(): Float {
-        if (textOverlays.isEmpty()) return 0f
-        return textOverlays.size * laneHeightPx + (textOverlays.size - 1) * laneGapPx
-    }
-
-    private fun textLanesTop(): Float = videoRowHeightPx + rowGapPx
-
-    private fun musicRowTop(): Float =
-        textLanesTop() + textLanesHeight() + (if (textOverlays.isNotEmpty()) rowGapPx else 0f)
+    private fun lanesTop(): Float = videoRowHeightPx + rowGapPx
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
         val totalContentWidth = clips.sumOf { it.timelineDurationMs } * pxPerMs
         val minWidth = MeasureSpec.getSize(widthMeasureSpec)
         val desiredWidth = max(minWidth, totalContentWidth.toInt())
 
-        val desiredHeight = (musicRowTop() + musicRowHeightPx).toInt()
+        val itemCount = buildTrackItems().size
+        val lanesHeight = if (itemCount == 0) 0f else itemCount * laneHeightPx + (itemCount - 1) * laneGapPx
+        val desiredHeight = (lanesTop() + lanesHeight).toInt()
         val heightMode = MeasureSpec.getMode(heightMeasureSpec)
         val height = if (heightMode == MeasureSpec.EXACTLY) MeasureSpec.getSize(heightMeasureSpec) else desiredHeight
 
@@ -195,8 +224,7 @@ class TimelineView @JvmOverloads constructor(
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         drawVideoRow(canvas)
-        drawTextLanes(canvas)
-        drawMusicRow(canvas)
+        drawLanes(canvas)
 
         val playheadX = playheadMs * pxPerMs
         canvas.drawLine(playheadX, 0f, playheadX, height.toFloat(), playheadPaint)
@@ -228,71 +256,52 @@ class TimelineView @JvmOverloads constructor(
         }
     }
 
-    /** Draws one lane per text overlay/sticker, each independently selectable and trimmable. */
-    private fun drawTextLanes(canvas: Canvas) {
-        if (textOverlays.isEmpty()) return
-        val top0 = textLanesTop()
+    /** Draws one lane per text overlay/sticker, music track, and image overlay -- each independently selectable and trimmable. */
+    private fun drawLanes(canvas: Canvas) {
+        val items = buildTrackItems()
+        if (items.isEmpty()) return
+        val top0 = lanesTop()
 
-        textOverlays.forEachIndexed { index, overlay ->
+        items.forEachIndexed { index, item ->
             val top = top0 + index * (laneHeightPx + laneGapPx)
             val bottom = top + laneHeightPx
             canvas.drawRect(RectF(0f, top, width.toFloat(), bottom), trackBackgroundPaint)
 
-            val segStartX = overlay.startMs * pxPerMs
-            val segEndX = overlay.endMs * pxPerMs
+            val segStartX = item.startMs * pxPerMs
+            val segEndX = item.endMs * pxPerMs
             val segRect = RectF(segStartX, top, segEndX, bottom)
-            canvas.drawRect(segRect, textSegmentPaint)
+            canvas.drawRect(segRect, segmentPaintFor(item.kind))
 
             canvas.save()
             canvas.clipRect(segRect)
-            canvas.drawText(overlay.text, segStartX + 4f, bottom - 8f, trackLabelPaint)
+            canvas.drawText(item.label, segStartX + 4f, bottom - 8f, trackLabelPaint)
             canvas.restore()
 
-            if (overlay.id == selectedOverlayId) {
+            if (item.id == selectedItemId) {
                 canvas.drawRect(RectF(segStartX + 2f, top + 2f, segEndX - 2f, bottom - 2f), selectedBorderPaint)
-                canvas.drawRect(segStartX, top, segStartX + overlayHandleWidthPx, bottom, handlePaint)
-                canvas.drawRect(segEndX - overlayHandleWidthPx, top, segEndX, bottom, handlePaint)
+                canvas.drawRect(segStartX, top, segStartX + laneHandleWidthPx, bottom, handlePaint)
+                canvas.drawRect(segEndX - laneHandleWidthPx, top, segEndX, bottom, handlePaint)
             }
         }
     }
 
-    /** Draws a single segment showing the music track's span relative to the whole project. */
-    private fun drawMusicRow(canvas: Canvas) {
-        val top = musicRowTop()
-        val bottom = top + musicRowHeightPx
-        canvas.drawRect(RectF(0f, top, width.toFloat(), bottom), trackBackgroundPaint)
-
-        for (track in audioTracks) {
-            val segStartX = track.timelineStartMs * pxPerMs
-            val segEndX = (track.timelineStartMs + track.durationMs) * pxPerMs
-            if (segEndX <= segStartX) continue
-
-            val segRect = RectF(segStartX, top, segEndX, bottom)
-            canvas.drawRect(segRect, musicSegmentPaint)
-
-            canvas.save()
-            canvas.clipRect(segRect)
-            canvas.drawText("\u266A Music", segStartX + 4f, bottom - 8f, trackLabelPaint)
-            canvas.restore()
-        }
-    }
-
-    /** Returns the index into [textOverlays] whose lane contains [y], or null if none does. */
-    private fun overlayIndexAtY(y: Float): Int? {
-        if (textOverlays.isEmpty()) return null
-        val relativeY = y - textLanesTop()
+    /** Returns the lane item whose row contains [y], or null if none does. */
+    private fun itemAtY(y: Float): TrackItem? {
+        val items = buildTrackItems()
+        if (items.isEmpty()) return null
+        val relativeY = y - lanesTop()
         if (relativeY < 0) return null
         val laneStride = laneHeightPx + laneGapPx
         val index = (relativeY / laneStride).toInt()
-        if (index !in textOverlays.indices) return null
+        if (index !in items.indices) return null
         val laneTop = index * laneStride
-        return if (relativeY in laneTop..(laneTop + laneHeightPx)) index else null
+        return if (relativeY in laneTop..(laneTop + laneHeightPx)) items[index] else null
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
         when (event.action) {
             MotionEvent.ACTION_DOWN -> {
-                val overlayLaneIndex = overlayIndexAtY(event.y)
+                val laneItem = itemAtY(event.y)
 
                 when {
                     event.y <= videoRowHeightPx -> {
@@ -312,21 +321,24 @@ class TimelineView @JvmOverloads constructor(
                             return true
                         }
                     }
-                    overlayLaneIndex != null -> {
-                        val overlay = textOverlays[overlayLaneIndex]
-                        val overlayHit = findOverlayHandleAt(event.x, overlay)
-                        if (overlayHit != null) {
-                            draggingOverlayHandle = overlayHit
+                    laneItem != null -> {
+                        val laneHit = findLaneHandleAt(event.x, laneItem)
+                        if (laneHit != null) {
+                            draggingLaneHandle = laneHit
                             parent.requestDisallowInterceptTouchEvent(true)
                             listener?.onTrimGestureStart()
                             updateLastTouchInScrollView(event.x)
                             return true
                         }
-                        val segStartX = overlay.startMs * pxPerMs
-                        val segEndX = overlay.endMs * pxPerMs
+                        val segStartX = laneItem.startMs * pxPerMs
+                        val segEndX = laneItem.endMs * pxPerMs
                         if (event.x in segStartX..segEndX) {
-                            selectedOverlayId = overlay.id
-                            listener?.onTextOverlaySelected(overlay.id)
+                            selectedItemId = laneItem.id
+                            when (laneItem.kind) {
+                                TrackKind.TEXT -> listener?.onTextOverlaySelected(laneItem.id)
+                                TrackKind.MUSIC -> listener?.onAudioTrackSelected(laneItem.id)
+                                TrackKind.IMAGE -> listener?.onImageOverlaySelected(laneItem.id)
+                            }
                             invalidate()
                             return true
                         }
@@ -350,7 +362,7 @@ class TimelineView @JvmOverloads constructor(
                     listener?.onTrimGestureEnd()
                 }
                 draggingHandle = null
-                draggingOverlayHandle = null
+                draggingLaneHandle = null
                 stopAutoScroll()
                 parent.requestDisallowInterceptTouchEvent(false)
                 return true
@@ -359,7 +371,7 @@ class TimelineView @JvmOverloads constructor(
         return super.onTouchEvent(event)
     }
 
-    private fun isDraggingAnyHandle(): Boolean = draggingHandle != null || draggingOverlayHandle != null
+    private fun isDraggingAnyHandle(): Boolean = draggingHandle != null || draggingLaneHandle != null
 
     /** Converts a local-view X into the ScrollView's own (scroll-offset-independent) coordinate space. */
     private fun updateLastTouchInScrollView(localX: Float) {
@@ -394,10 +406,10 @@ class TimelineView @JvmOverloads constructor(
         mainHandler.removeCallbacks(autoScrollRunnable)
     }
 
-    /** Dispatches to whichever kind of handle (clip or overlay) is currently being dragged. */
+    /** Dispatches to whichever kind of handle (clip or lane item) is currently being dragged. */
     private fun updateDragFromX(x: Float) {
         if (draggingHandle != null) updateClipTrimFromX(x)
-        if (draggingOverlayHandle != null) updateOverlayTrimFromX(x)
+        if (draggingLaneHandle != null) updateLaneTrimFromX(x)
     }
 
     private fun updateClipTrimFromX(x: Float) {
@@ -417,21 +429,28 @@ class TimelineView @JvmOverloads constructor(
         listener?.onClipTrimmed(handle.clip.id, newStart, newEnd)
     }
 
-    private fun updateOverlayTrimFromX(x: Float) {
-        val handle = draggingOverlayHandle ?: return
+    private fun updateLaneTrimFromX(x: Float) {
+        val handle = draggingLaneHandle ?: return
         val pixelDelta = x - handle.downX
         val msDelta = (pixelDelta / pxPerMs).toLong()
 
         val newStart: Long
         val newEnd: Long
         if (handle.isStart) {
-            newStart = max(0L, min(handle.overlay.endMs - 200, handle.originalMs + msDelta))
-            newEnd = handle.overlay.endMs
+            newStart = max(0L, min(handle.item.endMs - 200, handle.originalMs + msDelta))
+            newEnd = handle.item.endMs
         } else {
-            newStart = handle.overlay.startMs
-            newEnd = max(handle.overlay.startMs + 200, handle.originalMs + msDelta)
+            newStart = handle.item.startMs
+            newEnd = max(handle.item.startMs + 200, handle.originalMs + msDelta)
         }
-        listener?.onTextOverlayTrimmed(handle.overlay.id, newStart, newEnd)
+
+        when (handle.item.kind) {
+            TrackKind.TEXT -> listener?.onTextOverlayTrimmed(handle.item.id, newStart, newEnd)
+            // AudioTrack's model uses (timelineStartMs, durationMs) rather than
+            // (startMs, endMs) directly -- convert at the boundary.
+            TrackKind.MUSIC -> listener?.onAudioTrackTrimmed(handle.item.id, newStart, newEnd - newStart)
+            TrackKind.IMAGE -> listener?.onImageOverlayTrimmed(handle.item.id, newStart, newEnd)
+        }
     }
 
     private fun clipStartX(target: Clip): Float {
@@ -464,14 +483,14 @@ class TimelineView @JvmOverloads constructor(
         }
     }
 
-    /** Checks for a trim handle hit on [overlay]'s own lane -- only meaningful if it's the selected one. */
-    private fun findOverlayHandleAt(xPos: Float, overlay: TextOverlay): OverlayHandle? {
-        if (overlay.id != selectedOverlayId) return null
-        val startX = overlay.startMs * pxPerMs
-        val endX = overlay.endMs * pxPerMs
+    /** Checks for a trim handle hit on [item]'s own lane -- only meaningful if it's the selected one. */
+    private fun findLaneHandleAt(xPos: Float, item: TrackItem): LaneHandle? {
+        if (item.id != selectedItemId) return null
+        val startX = item.startMs * pxPerMs
+        val endX = item.endMs * pxPerMs
         return when {
-            xPos in startX..(startX + overlayHandleWidthPx) -> OverlayHandle(overlay, true, overlay.startMs, xPos)
-            xPos in (endX - overlayHandleWidthPx)..endX -> OverlayHandle(overlay, false, overlay.endMs, xPos)
+            xPos in startX..(startX + laneHandleWidthPx) -> LaneHandle(item, true, item.startMs, xPos)
+            xPos in (endX - laneHandleWidthPx)..endX -> LaneHandle(item, false, item.endMs, xPos)
             else -> null
         }
     }
