@@ -411,9 +411,21 @@ class EditorActivity : AppCompatActivity() {
      * the gesture mid-drag.
      */
     private fun syncOverlayProxy(project: com.example.videoeditor.model.Project, globalPositionMs: Long) {
-        val textOverlay = project.textOverlays.firstOrNull { globalPositionMs in it.startMs..it.endMs }
+        val activeTextOverlays = project.textOverlays.filter { globalPositionMs in it.startMs..it.endMs }
+        val activeImageOverlays = if (activeTextOverlays.isEmpty()) {
+            project.imageOverlays.filter { globalPositionMs in it.startMs..it.endMs }
+        } else emptyList()
+
+        // When multiple overlays overlap in time, prefer whichever one is
+        // explicitly selected on the timeline (tapped lane) over just
+        // grabbing the first match -- otherwise the proxy would always show/
+        // edit the same one regardless of which you selected, making it
+        // impossible to work with the others while they overlap.
+        val selectedTextId = viewModel.selectedOverlayId.value
+        val selectedImageId = viewModel.selectedImageOverlayId.value
+        val textOverlay = activeTextOverlays.firstOrNull { it.id == selectedTextId } ?: activeTextOverlays.firstOrNull()
         val imageOverlay = if (textOverlay == null) {
-            project.imageOverlays.firstOrNull { globalPositionMs in it.startMs..it.endMs }
+            activeImageOverlays.firstOrNull { it.id == selectedImageId } ?: activeImageOverlays.firstOrNull()
         } else null
 
         if (textOverlay == null && imageOverlay == null) {
