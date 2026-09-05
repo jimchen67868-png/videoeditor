@@ -200,6 +200,7 @@ class EditorActivity : AppCompatActivity() {
 
         // Inline "Add audio" / "Add text" rows below the timeline, CapCut-style.
         binding.addAudioRow.setOnClickListener { pickMusic.launch("audio/*") }
+        binding.editMusicButton.setOnClickListener { showEditMusicDialog() }
         binding.removeMusicButton.setOnClickListener {
             val selectedId = viewModel.selectedAudioTrackId.value
             val target = viewModel.project.value?.audioTracks?.firstOrNull { it.id == selectedId }
@@ -290,6 +291,7 @@ class EditorActivity : AppCompatActivity() {
         binding.textToolAutoLyrics.setOnClickListener { Toast.makeText(this, "Auto lyrics: not implemented in this build", Toast.LENGTH_SHORT).show() }
         binding.toolOverlay.setOnClickListener { showToolPanel(binding.overlayToolsPanel) }
         binding.addImageOverlayButton.setOnClickListener { pickImageOverlay.launch("image/*") }
+        binding.editImageOverlayButton.setOnClickListener { showEditImageOverlayDialog() }
         binding.removeImageOverlayButton.setOnClickListener {
             val selectedId = viewModel.selectedImageOverlayId.value
             val target = viewModel.project.value?.imageOverlays?.firstOrNull { it.id == selectedId }
@@ -338,6 +340,7 @@ class EditorActivity : AppCompatActivity() {
                 else -> "${tracks.size} music tracks"
             }
             binding.removeMusicButton.visibility = if (tracks.isNotEmpty()) android.view.View.VISIBLE else android.view.View.GONE
+            binding.editMusicButton.visibility = if (tracks.isNotEmpty()) android.view.View.VISIBLE else android.view.View.GONE
             updateTransitionButtonLabel()
         }
 
@@ -931,6 +934,60 @@ class EditorActivity : AppCompatActivity() {
                 )
                 viewModel.addImageOverlay(overlay)
                 Toast.makeText(this, "Image overlay added", Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun showEditMusicDialog() {
+        val project = viewModel.project.value
+        val selectedId = viewModel.selectedAudioTrackId.value
+        val track = project?.audioTracks?.firstOrNull { it.id == selectedId } ?: project?.audioTracks?.lastOrNull()
+        if (track == null) {
+            Toast.makeText(this, "Select a music track first (tap its lane on the timeline)", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val input = android.widget.EditText(this).apply {
+            hint = "Volume % (0-100)"
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER
+            setText((track.volume * 100).toInt().toString())
+        }
+
+        android.app.AlertDialog.Builder(this)
+            .setTitle("Edit music volume")
+            .setView(input)
+            .setPositiveButton("Save") { _, _ ->
+                val percent = input.text.toString().toFloatOrNull() ?: (track.volume * 100)
+                viewModel.setAudioTrackVolume(track.id, (percent / 100f).coerceIn(0f, 1f))
+                Toast.makeText(this, "Volume updated", Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun showEditImageOverlayDialog() {
+        val project = viewModel.project.value
+        val selectedId = viewModel.selectedImageOverlayId.value
+        val overlay = project?.imageOverlays?.firstOrNull { it.id == selectedId } ?: project?.imageOverlays?.lastOrNull()
+        if (overlay == null) {
+            Toast.makeText(this, "Select an image overlay first (tap its lane on the timeline)", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val input = android.widget.EditText(this).apply {
+            hint = "Opacity % (0-100)"
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER
+            setText((overlay.opacity * 100).toInt().toString())
+        }
+
+        android.app.AlertDialog.Builder(this)
+            .setTitle("Edit image overlay opacity")
+            .setView(input)
+            .setPositiveButton("Save") { _, _ ->
+                val percent = input.text.toString().toFloatOrNull() ?: (overlay.opacity * 100)
+                viewModel.updateImageOverlayOpacity(overlay.id, (percent / 100f).coerceIn(0f, 1f))
+                Toast.makeText(this, "Opacity updated", Toast.LENGTH_SHORT).show()
             }
             .setNegativeButton("Cancel", null)
             .show()

@@ -283,6 +283,14 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    fun updateImageOverlayOpacity(overlayId: String, opacity: Float) {
+        applyUpdate { current ->
+            current.copy(imageOverlays = current.imageOverlays.map {
+                if (it.id == overlayId) it.copy(opacity = opacity.coerceIn(0f, 1f)) else it
+            })
+        }
+    }
+
     fun removeTextOverlay(overlayId: String) {
         applyUpdate { it.copy(textOverlays = it.textOverlays.filterNot { o -> o.id == overlayId }) }
     }

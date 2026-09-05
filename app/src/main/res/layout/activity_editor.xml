@@ -203,6 +203,15 @@
             android:ellipsize="middle" />
 
         <TextView
+            android:id="@+id/editMusicButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Edit"
+            android:textColor="#00E5C3"
+            android:layout_marginEnd="16dp"
+            android:visibility="gone" />
+
+        <TextView
             android:id="@+id/removeMusicButton"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
@@ -455,6 +464,13 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:text="Add Image Overlay" />
+
+            <Button
+                android:id="@+id/editImageOverlayButton"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:text="Edit Selected Image Overlay (Opacity)" />
 
             <Button
                 android:id="@+id/removeImageOverlayButton"
