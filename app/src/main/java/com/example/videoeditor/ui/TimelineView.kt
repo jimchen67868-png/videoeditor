@@ -10,6 +10,7 @@ import android.media.MediaMetadataRetriever
 import android.os.Handler
 import android.os.Looper
 import android.util.AttributeSet
+import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
 import android.view.View
 import android.widget.HorizontalScrollView
@@ -18,29 +19,30 @@ import com.example.videoeditor.model.Clip
 import com.example.videoeditor.model.ImageOverlay
 import com.example.videoeditor.model.TextOverlay
 import java.util.concurrent.Executors
+import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.roundToInt
 
 /**
  * Multi-track timeline strip:
  *   - video row: clips proportional to duration, with drag handles for
- *     trimming and real video-frame thumbnails.
- *   - one stacked lane PER text overlay (covers "stickers" too, which are
- *     large-emoji TextOverlays under the hood), PER music track, and PER
- *     image overlay -- matching CapCut's one-row-per-item layout. Every
- *     lane is independently selectable by tap and trimmable via the same
- *     drag-handle mechanism as video clips.
+ *     trimming, real video-frame thumbnails, and PRESS-AND-HOLD on a clip's
+ *     body to pick it up and reorder it among the other clips.
+ *   - one stacked lane PER text overlay (covers "stickers" too), PER music
+ *     track, and PER image overlay. Each lane is tap-to-select, drag-the-
+ *     edges-to-trim (length), and PRESS-AND-HOLD-then-drag-the-body to slide
+ *     the whole segment to a different time position (start/end shift
+ *     together, duration preserved).
  *
- * Internally these three item kinds share one generic lane-layout/hit-test
+ * Internally these three lane item kinds share one generic layout/hit-test
  * path (see [TrackItem]) to avoid tripling the same code, while the public
- * [Listener] still exposes one pair of callbacks per kind for clarity at
- * the call site.
+ * [Listener] still exposes one pair of callbacks per kind for clarity.
  *
  * Must be hosted directly inside a HorizontalScrollView for content wider
  * than the screen to be reachable -- this view reports its true content
- * width AND height via onMeasure (height grows with the number of items in
- * any lane group), AND auto-scrolls the HorizontalScrollView when a trim
- * handle is dragged near the visible edge.
+ * width AND height via onMeasure, AND auto-scrolls the HorizontalScrollView
+ * when a trim handle OR a press-and-hold move is dragged near the visible edge.
  */
 class TimelineView @JvmOverloads constructor(
     context: Context,
@@ -50,6 +52,7 @@ class TimelineView @JvmOverloads constructor(
     interface Listener {
         fun onClipTrimmed(clipId: String, newTrimStartMs: Long, newTrimEndMs: Long)
         fun onClipSelected(clipId: String)
+        fun onClipReordered(fromIndex: Int, toIndex: Int) {}
         fun onPlayheadMoved(positionMs: Long)
         fun onTrimGestureStart() {}
         fun onTrimGestureEnd() {}
@@ -97,6 +100,11 @@ class TimelineView @JvmOverloads constructor(
         style = Paint.Style.STROKE
         strokeWidth = 6f
     }
+    private val movingBorderPaint = Paint().apply {
+        color = Color.parseColor("#00E5C3")
+        style = Paint.Style.STROKE
+        strokeWidth = 8f
+    }
     private val dividerPaint = Paint().apply { color = Color.parseColor("#1C1C1E"); strokeWidth = 4f }
     private val handlePaint = Paint().apply { color = Color.WHITE }
     private val playheadPaint = Paint().apply { color = Color.parseColor("#FFD60A"); strokeWidth = 6f }
@@ -132,6 +140,24 @@ class TimelineView @JvmOverloads constructor(
     private var draggingLaneHandle: LaneHandle? = null
     private data class LaneHandle(val item: TrackItem, val isStart: Boolean, val originalMs: Long, val downX: Float)
 
+    // --- Press-and-hold-to-move state ---
+    private val longPressTimeoutMs = 350L
+    private val touchSlopPx = 8f * resources.displayMetrics.density
+    private val longPressHandler = Handler(Looper.getMainLooper())
+    private var longPressRunnable: Runnable? = null
+    private var touchDownX = 0f
+    private var touchDownY = 0f
+    private var hasMovedBeyondSlop = false
+    private var pendingTapClip: Clip? = null
+    private var pendingTapItem: TrackItem? = null
+
+    private var movingClip: Clip? = null
+    private var movingClipDownX = 0f
+    private var movingClipLastX = 0f
+
+    private var movingItem: TrackItem? = null
+    private var movingItemDownX = 0f
+
     // Thumbnail loading: one representative frame per clip, generated off
     // the main thread and cached by clip id. Re-generated only when a
     // clip's source or trim start changes (see loadThumbnailIfNeeded).
@@ -140,24 +166,19 @@ class TimelineView @JvmOverloads constructor(
     private val executor = Executors.newFixedThreadPool(2)
     private val mainHandler = Handler(Looper.getMainLooper())
 
-    // --- Auto-scroll while dragging a handle (clip or lane item) near the visible edge ---
+    // --- Auto-scroll while dragging a handle (clip, lane item, or a move) near the visible edge ---
     private var scrollViewParent: HorizontalScrollView? = null
     private val edgeThresholdPx = 48f * resources.displayMetrics.density
     private val autoScrollStepPx = (10f * resources.displayMetrics.density).toInt()
     private var autoScrollDirection = 0 // -1 left, 0 none, +1 right
-    // Position relative to the ScrollView's own coordinate space (i.e. independent
-    // of scroll offset) -- used to keep tracking the drag while auto-scrolling
-    // moves content under a stationary finger, when no new MotionEvent arrives.
     private var lastTouchXInScrollView: Float = 0f
 
     private val autoScrollRunnable = object : Runnable {
         override fun run() {
             val scrollView = scrollViewParent ?: return
-            if (!isDraggingAnyHandle() || autoScrollDirection == 0) return
+            if (!isDraggingAnything() || autoScrollDirection == 0) return
 
             scrollView.scrollBy(autoScrollDirection * autoScrollStepPx, 0)
-            // Recompute the drag position using the new scroll offset, since the
-            // finger hasn't necessarily moved (no fresh MotionEvent is coming).
             val newLocalX = lastTouchXInScrollView + scrollView.scrollX
             updateDragFromX(newLocalX)
 
@@ -173,6 +194,7 @@ class TimelineView @JvmOverloads constructor(
     override fun onDetachedFromWindow() {
         super.onDetachedFromWindow()
         mainHandler.removeCallbacks(autoScrollRunnable)
+        longPressRunnable?.let { longPressHandler.removeCallbacks(it) }
     }
 
     fun setClips(newClips: List<Clip>) {
@@ -246,7 +268,9 @@ class TimelineView @JvmOverloads constructor(
             }
             canvas.drawLine(x + width, 0f, x + width, h, dividerPaint)
 
-            if (clip.id == selectedClipId) {
+            if (clip.id == movingClip?.id) {
+                canvas.drawRect(RectF(x + 3f, 3f, x + width - 3f, h - 3f), movingBorderPaint)
+            } else if (clip.id == selectedClipId) {
                 canvas.drawRect(RectF(x + 3f, 3f, x + width - 3f, h - 3f), selectedBorderPaint)
                 canvas.drawRect(x, 0f, x + handleWidthPx, h, handlePaint)
                 canvas.drawRect(x + width - handleWidthPx, 0f, x + width, h, handlePaint)
@@ -277,7 +301,9 @@ class TimelineView @JvmOverloads constructor(
             canvas.drawText(item.label, segStartX + 4f, bottom - 8f, trackLabelPaint)
             canvas.restore()
 
-            if (item.id == selectedItemId) {
+            if (item.id == movingItem?.id) {
+                canvas.drawRect(RectF(segStartX + 2f, top + 2f, segEndX - 2f, bottom - 2f), movingBorderPaint)
+            } else if (item.id == selectedItemId) {
                 canvas.drawRect(RectF(segStartX + 2f, top + 2f, segEndX - 2f, bottom - 2f), selectedBorderPaint)
                 canvas.drawRect(segStartX, top, segStartX + laneHandleWidthPx, bottom, handlePaint)
                 canvas.drawRect(segEndX - laneHandleWidthPx, top, segEndX, bottom, handlePaint)
@@ -301,6 +327,12 @@ class TimelineView @JvmOverloads constructor(
     override fun onTouchEvent(event: MotionEvent): Boolean {
         when (event.action) {
             MotionEvent.ACTION_DOWN -> {
+                touchDownX = event.x
+                touchDownY = event.y
+                hasMovedBeyondSlop = false
+                pendingTapClip = null
+                pendingTapItem = null
+
                 val laneItem = itemAtY(event.y)
 
                 when {
@@ -315,9 +347,8 @@ class TimelineView @JvmOverloads constructor(
                         }
                         val clip = findClipAt(event.x)
                         if (clip != null) {
-                            selectedClipId = clip.id
-                            listener?.onClipSelected(clip.id)
-                            invalidate()
+                            pendingTapClip = clip
+                            scheduleLongPressForClip(clip, event.x)
                             return true
                         }
                     }
@@ -333,13 +364,8 @@ class TimelineView @JvmOverloads constructor(
                         val segStartX = laneItem.startMs * pxPerMs
                         val segEndX = laneItem.endMs * pxPerMs
                         if (event.x in segStartX..segEndX) {
-                            selectedItemId = laneItem.id
-                            when (laneItem.kind) {
-                                TrackKind.TEXT -> listener?.onTextOverlaySelected(laneItem.id)
-                                TrackKind.MUSIC -> listener?.onAudioTrackSelected(laneItem.id)
-                                TrackKind.IMAGE -> listener?.onImageOverlaySelected(laneItem.id)
-                            }
-                            invalidate()
+                            pendingTapItem = laneItem
+                            scheduleLongPressForItem(laneItem, event.x)
                             return true
                         }
                     }
@@ -349,6 +375,28 @@ class TimelineView @JvmOverloads constructor(
             }
 
             MotionEvent.ACTION_MOVE -> {
+                if (!hasMovedBeyondSlop) {
+                    val dx = event.x - touchDownX
+                    val dy = event.y - touchDownY
+                    if (abs(dx) > touchSlopPx || abs(dy) > touchSlopPx) {
+                        hasMovedBeyondSlop = true
+                        longPressRunnable?.let { longPressHandler.removeCallbacks(it) }
+                    }
+                }
+
+                if (movingClip != null) {
+                    movingClipLastX = event.x
+                    updateLastTouchInScrollView(event.x)
+                    updateAutoScrollDirection(event.x)
+                    invalidate()
+                    return true
+                }
+                if (movingItem != null) {
+                    updateLastTouchInScrollView(event.x)
+                    updateAutoScrollDirection(event.x)
+                    updateMovingItemFromX(event.x)
+                    return true
+                }
                 if (isDraggingAnyHandle()) {
                     updateLastTouchInScrollView(event.x)
                     updateAutoScrollDirection(event.x)
@@ -358,20 +406,119 @@ class TimelineView @JvmOverloads constructor(
             }
 
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                if (isDraggingAnyHandle()) {
-                    listener?.onTrimGestureEnd()
+                longPressRunnable?.let { longPressHandler.removeCallbacks(it) }
+
+                when {
+                    movingClip != null -> finishMovingClip()
+                    movingItem != null -> {
+                        listener?.onTrimGestureEnd()
+                        movingItem = null
+                    }
+                    isDraggingAnyHandle() -> listener?.onTrimGestureEnd()
+                    !hasMovedBeyondSlop -> {
+                        // A plain tap (no long-press fired, no drag) -- select as before.
+                        pendingTapClip?.let {
+                            selectedClipId = it.id
+                            listener?.onClipSelected(it.id)
+                        }
+                        pendingTapItem?.let { item ->
+                            selectedItemId = item.id
+                            when (item.kind) {
+                                TrackKind.TEXT -> listener?.onTextOverlaySelected(item.id)
+                                TrackKind.MUSIC -> listener?.onAudioTrackSelected(item.id)
+                                TrackKind.IMAGE -> listener?.onImageOverlaySelected(item.id)
+                            }
+                        }
+                    }
                 }
+
                 draggingHandle = null
                 draggingLaneHandle = null
+                pendingTapClip = null
+                pendingTapItem = null
                 stopAutoScroll()
                 parent.requestDisallowInterceptTouchEvent(false)
+                invalidate()
                 return true
             }
         }
         return super.onTouchEvent(event)
     }
 
+    private fun scheduleLongPressForClip(clip: Clip, downX: Float) {
+        val runnable = Runnable {
+            if (!hasMovedBeyondSlop) {
+                movingClip = clip
+                movingClipDownX = downX
+                movingClipLastX = downX
+                selectedClipId = clip.id
+                listener?.onClipSelected(clip.id)
+                parent.requestDisallowInterceptTouchEvent(true)
+                performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                invalidate()
+            }
+        }
+        longPressRunnable = runnable
+        longPressHandler.postDelayed(runnable, longPressTimeoutMs)
+    }
+
+    private fun scheduleLongPressForItem(item: TrackItem, downX: Float) {
+        val runnable = Runnable {
+            if (!hasMovedBeyondSlop) {
+                movingItem = item
+                movingItemDownX = downX
+                selectedItemId = item.id
+                when (item.kind) {
+                    TrackKind.TEXT -> listener?.onTextOverlaySelected(item.id)
+                    TrackKind.MUSIC -> listener?.onAudioTrackSelected(item.id)
+                    TrackKind.IMAGE -> listener?.onImageOverlaySelected(item.id)
+                }
+                listener?.onTrimGestureStart()
+                parent.requestDisallowInterceptTouchEvent(true)
+                performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                invalidate()
+            }
+        }
+        longPressRunnable = runnable
+        longPressHandler.postDelayed(runnable, longPressTimeoutMs)
+    }
+
+    /** Slides the whole lane item (start AND end shift together, duration preserved) as the finger moves. */
+    private fun updateMovingItemFromX(x: Float) {
+        val item = movingItem ?: return
+        val deltaMs = ((x - movingItemDownX) / pxPerMs).toLong()
+        val duration = item.endMs - item.startMs
+        val newStart = max(0L, item.startMs + deltaMs)
+        val newEnd = newStart + duration
+        dispatchItemMoved(item, newStart, newEnd)
+    }
+
+    private fun dispatchItemMoved(item: TrackItem, newStart: Long, newEnd: Long) {
+        when (item.kind) {
+            TrackKind.TEXT -> listener?.onTextOverlayTrimmed(item.id, newStart, newEnd)
+            TrackKind.MUSIC -> listener?.onAudioTrackTrimmed(item.id, newStart, newEnd - newStart)
+            TrackKind.IMAGE -> listener?.onImageOverlayTrimmed(item.id, newStart, newEnd)
+        }
+    }
+
+    /** Commits a clip reorder based on total drag distance, using the dragged clip's own width as the unit of one "slot". */
+    private fun finishMovingClip() {
+        val clip = movingClip ?: return
+        val fromIndex = clips.indexOfFirst { it.id == clip.id }
+        if (fromIndex >= 0) {
+            val totalDeltaPx = movingClipLastX - movingClipDownX
+            val slotWidthPx = (clip.timelineDurationMs * pxPerMs).coerceAtLeast(1f)
+            val indexDelta = (totalDeltaPx / slotWidthPx).roundToInt()
+            val toIndex = (fromIndex + indexDelta).coerceIn(0, clips.size - 1)
+            if (toIndex != fromIndex) {
+                listener?.onClipReordered(fromIndex, toIndex)
+            }
+        }
+        movingClip = null
+    }
+
     private fun isDraggingAnyHandle(): Boolean = draggingHandle != null || draggingLaneHandle != null
+    private fun isDraggingAnything(): Boolean = isDraggingAnyHandle() || movingClip != null || movingItem != null
 
     /** Converts a local-view X into the ScrollView's own (scroll-offset-independent) coordinate space. */
     private fun updateLastTouchInScrollView(localX: Float) {
@@ -406,10 +553,12 @@ class TimelineView @JvmOverloads constructor(
         mainHandler.removeCallbacks(autoScrollRunnable)
     }
 
-    /** Dispatches to whichever kind of handle (clip or lane item) is currently being dragged. */
+    /** Dispatches to whichever kind of handle/move is currently in progress, for auto-scroll ticks. */
     private fun updateDragFromX(x: Float) {
         if (draggingHandle != null) updateClipTrimFromX(x)
         if (draggingLaneHandle != null) updateLaneTrimFromX(x)
+        if (movingItem != null) updateMovingItemFromX(x)
+        if (movingClip != null) { movingClipLastX = x; invalidate() }
     }
 
     private fun updateClipTrimFromX(x: Float) {
@@ -443,14 +592,7 @@ class TimelineView @JvmOverloads constructor(
             newStart = handle.item.startMs
             newEnd = max(handle.item.startMs + 200, handle.originalMs + msDelta)
         }
-
-        when (handle.item.kind) {
-            TrackKind.TEXT -> listener?.onTextOverlayTrimmed(handle.item.id, newStart, newEnd)
-            // AudioTrack's model uses (timelineStartMs, durationMs) rather than
-            // (startMs, endMs) directly -- convert at the boundary.
-            TrackKind.MUSIC -> listener?.onAudioTrackTrimmed(handle.item.id, newStart, newEnd - newStart)
-            TrackKind.IMAGE -> listener?.onImageOverlayTrimmed(handle.item.id, newStart, newEnd)
-        }
+        dispatchItemMoved(handle.item, newStart, newEnd)
     }
 
     private fun clipStartX(target: Clip): Float {

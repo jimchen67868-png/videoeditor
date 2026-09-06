@@ -150,6 +150,11 @@ class EditorActivity : AppCompatActivity() {
                 Toast.makeText(this@EditorActivity, "Clip selected", Toast.LENGTH_SHORT).show()
             }
 
+            override fun onClipReordered(fromIndex: Int, toIndex: Int) {
+                viewModel.reorderClip(fromIndex, toIndex)
+                Toast.makeText(this@EditorActivity, "Clip reordered", Toast.LENGTH_SHORT).show()
+            }
+
             override fun onPlayheadMoved(positionMs: Long) {
                 player.seekTo(positionMs)
             }
