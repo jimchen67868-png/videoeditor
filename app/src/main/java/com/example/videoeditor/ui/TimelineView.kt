@@ -252,31 +252,87 @@ class TimelineView @JvmOverloads constructor(
         canvas.drawLine(playheadX, 0f, playheadX, height.toFloat(), playheadPaint)
     }
 
+    /**
+     * While a clip is being long-press-dragged, computes what the clip order
+     * WOULD be if released right now -- used both to live-shift the other
+     * clips out of the way during the drag and to commit the final order on
+     * release (see [finishMovingClip]), so the two stay perfectly consistent.
+     */
+    private fun computeTargetIndexForMovingClip(): Pair<Int, Int>? {
+        val moving = movingClip ?: return null
+        val fromIndex = clips.indexOfFirst { it.id == moving.id }
+        if (fromIndex < 0) return null
+        val totalDeltaPx = movingClipLastX - movingClipDownX
+        val slotWidthPx = (moving.timelineDurationMs * pxPerMs).coerceAtLeast(1f)
+        val indexDelta = (totalDeltaPx / slotWidthPx).roundToInt()
+        val toIndex = (fromIndex + indexDelta).coerceIn(0, clips.size - 1)
+        return fromIndex to toIndex
+    }
+
+    private fun liveClipOrder(): List<Clip> {
+        val (fromIndex, toIndex) = computeTargetIndexForMovingClip() ?: return clips
+        if (fromIndex == toIndex) return clips
+        val mutable = clips.toMutableList()
+        val item = mutable.removeAt(fromIndex)
+        mutable.add(toIndex, item)
+        return mutable
+    }
+
     private fun drawVideoRow(canvas: Canvas) {
-        var x = 0f
         val h = videoRowHeightPx
+        val moving = movingClip
 
-        for (clip in clips) {
+        if (moving == null) {
+            var x = 0f
+            for (clip in clips) {
+                val width = clip.timelineDurationMs * pxPerMs
+                drawClipAt(canvas, clip, x, width, h)
+                x += width
+            }
+            return
+        }
+
+        // Dragging: draw everyone else in their LIVE (shifted) slot, skip the
+        // moving clip's own slot, then draw it floating on top afterward so
+        // it visually sits above the rest while following the finger.
+        var x = 0f
+        var movingOriginalX = 0f
+        for (clip in liveClipOrder()) {
             val width = clip.timelineDurationMs * pxPerMs
-            val rect = RectF(x, 0f, x + width, h)
-
-            val thumb = thumbnailCache[clip.id]
-            if (thumb != null) {
-                canvas.drawBitmap(thumb, null, rect, bitmapPaint)
+            if (clip.id != moving.id) {
+                drawClipAt(canvas, clip, x, width, h)
             } else {
-                canvas.drawRect(rect, clipPaint) // placeholder while thumbnail loads
+                movingOriginalX = x
             }
-            canvas.drawLine(x + width, 0f, x + width, h, dividerPaint)
-
-            if (clip.id == movingClip?.id) {
-                canvas.drawRect(RectF(x + 3f, 3f, x + width - 3f, h - 3f), movingBorderPaint)
-            } else if (clip.id == selectedClipId) {
-                canvas.drawRect(RectF(x + 3f, 3f, x + width - 3f, h - 3f), selectedBorderPaint)
-                canvas.drawRect(x, 0f, x + handleWidthPx, h, handlePaint)
-                canvas.drawRect(x + width - handleWidthPx, 0f, x + width, h, handlePaint)
-            }
-
             x += width
+        }
+
+        val movingWidth = moving.timelineDurationMs * pxPerMs
+        val floatingX = movingOriginalX + (movingClipLastX - movingClipDownX)
+        drawClipAt(canvas, moving, floatingX, movingWidth, h, isFloating = true)
+    }
+
+    private fun drawClipAt(canvas: Canvas, clip: Clip, x: Float, width: Float, h: Float, isFloating: Boolean = false) {
+        val rect = RectF(x, 0f, x + width, h)
+
+        val thumb = thumbnailCache[clip.id]
+        if (thumb != null) {
+            canvas.drawBitmap(thumb, null, rect, bitmapPaint)
+        } else {
+            canvas.drawRect(rect, clipPaint) // placeholder while thumbnail loads
+        }
+
+        if (isFloating) {
+            canvas.drawRect(RectF(x + 3f, 3f, x + width - 3f, h - 3f), movingBorderPaint)
+            return
+        }
+
+        canvas.drawLine(x + width, 0f, x + width, h, dividerPaint)
+
+        if (clip.id == selectedClipId) {
+            canvas.drawRect(RectF(x + 3f, 3f, x + width - 3f, h - 3f), selectedBorderPaint)
+            canvas.drawRect(x, 0f, x + handleWidthPx, h, handlePaint)
+            canvas.drawRect(x + width - handleWidthPx, 0f, x + width, h, handlePaint)
         }
     }
 
@@ -501,18 +557,14 @@ class TimelineView @JvmOverloads constructor(
         }
     }
 
-    /** Commits a clip reorder based on total drag distance, using the dragged clip's own width as the unit of one "slot". */
+    /** Commits a clip reorder using the same live-computed target index shown during the drag. */
     private fun finishMovingClip() {
-        val clip = movingClip ?: return
-        val fromIndex = clips.indexOfFirst { it.id == clip.id }
-        if (fromIndex >= 0) {
-            val totalDeltaPx = movingClipLastX - movingClipDownX
-            val slotWidthPx = (clip.timelineDurationMs * pxPerMs).coerceAtLeast(1f)
-            val indexDelta = (totalDeltaPx / slotWidthPx).roundToInt()
-            val toIndex = (fromIndex + indexDelta).coerceIn(0, clips.size - 1)
-            if (toIndex != fromIndex) {
-                listener?.onClipReordered(fromIndex, toIndex)
-            }
+        val (fromIndex, toIndex) = computeTargetIndexForMovingClip() ?: run {
+            movingClip = null
+            return
+        }
+        if (toIndex != fromIndex) {
+            listener?.onClipReordered(fromIndex, toIndex)
         }
         movingClip = null
     }
