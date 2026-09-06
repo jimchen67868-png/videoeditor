@@ -38,6 +38,17 @@ class EditorActivity : AppCompatActivity() {
     private lateinit var binding: ActivityEditorBinding
     private val viewModel: EditorViewModel by viewModels()
     private lateinit var player: ExoPlayer
+    // Music tracks were only ever wired into the EXPORT pipeline (TimelineExporter);
+    // the live preview player had no audio source for them at all, so music
+    // never played during preview -- only in the final exported file. This
+    // second player fixes that by playing the music in parallel, kept in sync
+    // with the main player's position and play/pause state (see syncMusicPlayer).
+    // NOTE: only the FIRST music track plays in live preview (a pragmatic
+    // scope limit -- mixing arbitrarily many simultaneous tracks live would
+    // need N synced players or a more advanced composition-preview API this
+    // environment can't verify). Export still correctly mixes ALL tracks.
+    private lateinit var musicPlayer: ExoPlayer
+    private var currentPreviewMusicTrackId: String? = null
 
     // Tracks (sourceUri, trimStart, trimEnd) per clip so the project observer
     // can tell "clip list actually changed" apart from "only a cosmetic field
@@ -130,6 +141,7 @@ class EditorActivity : AppCompatActivity() {
         }
 
         player = ExoPlayer.Builder(this).build()
+        musicPlayer = ExoPlayer.Builder(this).build()
         binding.previewPlayerView.player = player
         player.addListener(object : androidx.media3.common.Player.Listener {
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
@@ -376,6 +388,7 @@ class EditorActivity : AppCompatActivity() {
     override fun onStop() {
         super.onStop()
         player.pause()
+        musicPlayer.pause()
         positionHandler.removeCallbacks(positionUpdater)
         runCatching { unregisterReceiver(exportResultReceiver) }
     }
@@ -392,6 +405,50 @@ class EditorActivity : AppCompatActivity() {
      * Minor desync possible for sped-up/slowed-down clips; not worth the
      * complexity to fix until live-preview effects are wired up properly.
      */
+    /**
+     * Keeps the dedicated music player in sync with the main player: loads
+     * the first music track (if any), seeks it to match the main player's
+     * position relative to that track's timeline placement, and mirrors
+     * play/pause -- all on a ~200ms poll rather than trying to intercept
+     * every single seek/play/pause call site, which is imperceptible for a
+     * live preview (export remains frame/sample-accurate via Transformer).
+     */
+    private fun syncMusicPlayer(project: com.example.videoeditor.model.Project, globalPositionMs: Long) {
+        val track = project.audioTracks.firstOrNull()
+        if (track == null) {
+            if (musicPlayer.isPlaying) musicPlayer.pause()
+            currentPreviewMusicTrackId = null
+            return
+        }
+
+        if (track.id != currentPreviewMusicTrackId) {
+            currentPreviewMusicTrackId = track.id
+            musicPlayer.stop()
+            musicPlayer.clearMediaItems()
+            musicPlayer.setMediaItem(MediaItem.fromUri(track.sourceUri))
+            musicPlayer.prepare()
+        }
+
+        val trackEndMs = track.timelineStartMs + track.durationMs
+        val isActive = globalPositionMs in track.timelineStartMs until trackEndMs
+        if (!isActive) {
+            if (musicPlayer.isPlaying) musicPlayer.pause()
+            return
+        }
+
+        val desiredSourcePositionMs = track.sourceStartMs + (globalPositionMs - track.timelineStartMs)
+        // Only correct drift beyond ~300ms rather than seeking every single
+        // poll tick, which would otherwise cause constant audio stutter.
+        if (kotlin.math.abs(desiredSourcePositionMs - musicPlayer.currentPosition) > 300) {
+            musicPlayer.seekTo(desiredSourcePositionMs)
+        }
+        musicPlayer.volume = track.volume
+
+        val mainIsPlaying = player.isPlaying
+        if (mainIsPlaying && !musicPlayer.isPlaying) musicPlayer.play()
+        if (!mainIsPlaying && musicPlayer.isPlaying) musicPlayer.pause()
+    }
+
     private fun updatePlayheadAndTimeLabel() {
         val project = viewModel.project.value ?: return
         if (project.clips.isEmpty()) {
@@ -411,6 +468,7 @@ class EditorActivity : AppCompatActivity() {
         binding.timeLabel.text = "${formatTime(globalPositionMs)} / ${formatTime(project.totalDurationMs)}"
         lastKnownPlayheadMs = globalPositionMs
         syncOverlayProxy(project, globalPositionMs)
+        syncMusicPlayer(project, globalPositionMs)
     }
 
     /**
@@ -1106,7 +1164,15 @@ class EditorActivity : AppCompatActivity() {
         var selectedColor = existingOverlay?.colorArgb ?: android.graphics.Color.WHITE
         var selectedSize = existingOverlay?.sizeSp ?: 24f
         var selectedX = existingOverlay?.x ?: 0.5f
-        var selectedY = existingOverlay?.y ?: 0.85f // default: bottom-center
+        var selectedY = existingOverlay?.y ?: run {
+            // New overlay: if others are already active at this start time,
+            // stagger this one's default vertical position upward so it
+            // doesn't render directly on top of them (they'd all default to
+            // the same bottom-center spot otherwise, making it look like
+            // only one text overlay can show at a time).
+            val activeCount = project.textOverlays.count { lastKnownPlayheadMs in it.startMs..it.endMs }
+            (0.85f - activeCount * 0.14f).coerceAtLeast(0.15f)
+        }
 
         val density = resources.displayMetrics.density
         val swatchSizePx = (36 * density).toInt()
@@ -1336,6 +1402,7 @@ class EditorActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         player.release()
+        musicPlayer.release()
         super.onDestroy()
     }
 }
