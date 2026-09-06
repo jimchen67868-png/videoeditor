@@ -157,6 +157,11 @@ class EditorActivity : AppCompatActivity() {
 
             override fun onPlayheadMoved(positionMs: Long) {
                 player.seekTo(positionMs)
+                // Update our tracked position immediately rather than waiting for
+                // the next ~200ms poll tick -- otherwise adding a text/music/image
+                // overlay right after scrubbing could use the stale pre-scrub
+                // position as its default start time.
+                updatePlayheadAndTimeLabel()
             }
 
             override fun onTrimGestureStart() {

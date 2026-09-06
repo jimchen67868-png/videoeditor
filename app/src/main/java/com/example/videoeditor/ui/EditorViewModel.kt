@@ -192,11 +192,37 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     /** Live (no-undo-history) update for dragging a music track's trim handle; pair with beginBatchEdit/endBatchEdit. */
+    /**
+     * Live (no-undo-history) update for dragging a music track's trim handle
+     * OR sliding it to a new time position; pair with beginBatchEdit/endBatchEdit.
+     *
+     * Distinguishes the three gestures purely from before/after values, since
+     * the caller (TimelineView) reports all of them the same way (new
+     * timeline start + new duration):
+     *   - MOVE (press-and-hold slide): both start and end shift by the same
+     *     amount -> sourceStartMs (which part of the audio FILE plays)
+     *     should NOT change, only WHEN it plays.
+     *   - END-TRIM (drag the right edge): start unchanged, only duration
+     *     changes -> sourceStartMs unchanged, plays more/less of the same
+     *     starting point.
+     *   - START-TRIM (drag the left edge): start changes but the end stays
+     *     fixed -> this should also skip further into the audio file, or the
+     *     trimmed-off beginning would just play later instead of being cut.
+     */
     fun trimAudioTrackLive(trackId: String, newTimelineStartMs: Long, newDurationMs: Long) {
         val current = _project.value ?: return
         _project.value = current.copy(
-            audioTracks = current.audioTracks.map {
-                if (it.id == trackId) it.copy(timelineStartMs = newTimelineStartMs, durationMs = newDurationMs) else it
+            audioTracks = current.audioTracks.map { track ->
+                if (track.id != trackId) return@map track
+                val oldEndMs = track.timelineStartMs + track.durationMs
+                val newEndMs = newTimelineStartMs + newDurationMs
+                val isStartTrim = newTimelineStartMs != track.timelineStartMs && newEndMs == oldEndMs
+                val newSourceStartMs = if (isStartTrim) {
+                    (track.sourceStartMs + (newTimelineStartMs - track.timelineStartMs)).coerceAtLeast(0L)
+                } else {
+                    track.sourceStartMs
+                }
+                track.copy(timelineStartMs = newTimelineStartMs, durationMs = newDurationMs, sourceStartMs = newSourceStartMs)
             }
         )
         scheduleAutoSave()
