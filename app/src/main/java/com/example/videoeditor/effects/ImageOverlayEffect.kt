@@ -44,13 +44,11 @@ object ImageOverlayEffectFactory {
         }
     }
 
-    fun build(context: Context, overlays: List<ImageOverlay>): OverlayEffect? {
-        if (overlays.isEmpty()) return null
-
-        val media3Overlays = overlays.mapNotNull { overlay ->
+    fun build(context: Context, overlays: List<ImageOverlay>): List<OverlayEffect> {
+        return overlays.mapNotNull { overlay ->
             val bitmap = loadScaledBitmap(context, overlay) ?: return@mapNotNull null
 
-            object : BitmapOverlay() {
+            val media3Overlay = object : BitmapOverlay() {
                 override fun getBitmap(presentationTimeUs: Long): Bitmap = bitmap
 
                 override fun getOverlaySettings(presentationTimeUs: Long): OverlaySettings {
@@ -63,10 +61,9 @@ object ImageOverlayEffectFactory {
                         .build()
                 }
             }
-        }
 
-        if (media3Overlays.isEmpty()) return null
-        return OverlayEffect(ImmutableList.copyOf(media3Overlays))
+            OverlayEffect(ImmutableList.of(media3Overlay))
+        }
     }
 
     private fun loadScaledBitmap(context: Context, overlay: ImageOverlay): Bitmap? {

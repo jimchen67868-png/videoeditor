@@ -53,7 +53,6 @@ class EditorActivity : AppCompatActivity() {
     // Tracks (sourceUri, trimStart, trimEnd) per clip so the project observer
     // can tell "clip list actually changed" apart from "only a cosmetic field
     // like filter/text/transition changed" -- see the observer below.
-    private var lastStructuralSignature: List<Triple<Uri, Long, Long>>? = null
     private var lastKnownPlayheadMs: Long = 0L
 
     // --- Drag-to-reposition / resize proxy for whichever text overlay/sticker
@@ -340,20 +339,16 @@ class EditorActivity : AppCompatActivity() {
             binding.timelineView.setTextOverlays(project.textOverlays)
             binding.timelineView.setImageOverlays(project.imageOverlays)
 
-            // Only rebuild the ExoPlayer playlist (stop/clear/re-add/prepare)
-            // when clips actually changed structurally (added, removed,
-            // reordered, or trimmed). Filter/text/transition/speed changes
-            // don't need any of that -- they only need the effects chain
-            // refreshed. Doing a full teardown/rebuild on EVERY edit (including
-            // things like a filter tap) was almost certainly what caused
-            // playback to intermittently stop responding after those edits.
-            val structuralSignature = project.clips.map { Triple(it.sourceUri, it.trimStartMs, it.trimEndMs) }
-            if (structuralSignature != lastStructuralSignature) {
-                lastStructuralSignature = structuralSignature
-                rebuildPreviewPlaylist(project)
-            } else {
-                applyLiveEffectsForCurrentItem()
-            }
+            // Always do the full rebuild (stop/clear/re-add/set-effects-before-
+            // prepare/prepare/seek-back/resume) for EVERY project change, not
+            // just structural ones. There used to be a "lightweight" path here
+            // that only refreshed the effects chain on an already-stable player
+            // for cosmetic-only changes (filter/text/overlay edits) to avoid a
+            // brief re-buffer stutter -- but that path caused playback to break
+            // more than once (most recently: after resizing an overlay). Given
+            // it's recurred, reliability wins over avoiding the stutter: every
+            // edit now goes through the same well-tested full-rebuild path.
+            rebuildPreviewPlaylist(project)
 
             val tracks = project.audioTracks
             binding.musicTrackLabel.text = when {
@@ -697,12 +692,12 @@ class EditorActivity : AppCompatActivity() {
             val clipLocalOverlays = com.example.videoeditor.effects.TextOverlayEffectFactory.overlaysForWindow(
                 project.textOverlays, clipGlobalStartMs, clip.timelineDurationMs
             )
-            com.example.videoeditor.effects.TextOverlayEffectFactory.build(clipLocalOverlays)?.let { effects += it }
+            com.example.videoeditor.effects.TextOverlayEffectFactory.build(clipLocalOverlays).forEach { effects += it }
 
             val clipLocalImageOverlays = com.example.videoeditor.effects.ImageOverlayEffectFactory.overlaysForWindow(
                 project.imageOverlays, clipGlobalStartMs, clip.timelineDurationMs
             )
-            com.example.videoeditor.effects.ImageOverlayEffectFactory.build(this, clipLocalImageOverlays)?.let { effects += it }
+            com.example.videoeditor.effects.ImageOverlayEffectFactory.build(this, clipLocalImageOverlays).forEach { effects += it }
 
             // Same fade logic as TimelineExporter, so preview matches export.
             val previousClip = project.clips.getOrNull(index - 1)

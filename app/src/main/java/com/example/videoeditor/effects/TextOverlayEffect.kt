@@ -14,11 +14,18 @@ import kotlin.math.max
 import kotlin.math.min
 
 /**
- * Converts our app-level [TextOverlay] list into a Media3 [OverlayEffect].
+ * Converts our app-level [TextOverlay] list into a LIST of Media3 [OverlayEffect]s
+ * -- one per overlay, chained together in the video effects list -- rather
+ * than bundling all overlays into a single OverlayEffect's internal list.
  *
- * Media3 renders each TextOverlay as a bitmap composited over the frame via GL,
- * so this runs the same in live preview and in final export -- no separate
- * "preview renderer" vs "export renderer" to keep in sync.
+ * This was changed after finding that multiple simultaneous overlays didn't
+ * actually render together when passed as one OverlayEffect's list (only one
+ * showed, others stayed hidden) -- the exact multi-item compositing behavior
+ * of that API wasn't something this environment could verify ahead of time.
+ * Chaining single-overlay effects instead relies only on the simpler,
+ * already-proven single-overlay path (used successfully throughout this
+ * codebase for filters/effects too), applied N times via normal effect
+ * chaining, which is a much better-understood mechanism.
  *
  * Text overlays live at the PROJECT level with GLOBAL timeline positions (see
  * model/Timeline.kt), but Media3's per-clip Effect pipeline only sees
@@ -45,10 +52,9 @@ object TextOverlayEffectFactory {
         }
     }
 
-    fun build(overlays: List<TextOverlay>): OverlayEffect? {
-        if (overlays.isEmpty()) return null
-
-        val media3Overlays = overlays.map { overlay ->
+    /** Returns one OverlayEffect per overlay (empty list if [overlays] is empty). */
+    fun build(overlays: List<TextOverlay>): List<OverlayEffect> {
+        return overlays.map { overlay ->
             val spannable = SpannableString(overlay.text).apply {
                 setSpan(ForegroundColorSpan(overlay.colorArgb), 0, overlay.text.length, 0)
                 setSpan(AbsoluteSizeSpan(overlay.sizeSp.toInt(), true), 0, overlay.text.length, 0)
@@ -57,7 +63,7 @@ object TextOverlayEffectFactory {
                 }
             }
 
-            object : Media3TextOverlay() {
+            val media3Overlay = object : Media3TextOverlay() {
                 override fun getText(presentationTimeUs: Long): SpannableString = spannable
 
                 override fun getOverlaySettings(presentationTimeUs: Long): OverlaySettings {
@@ -73,8 +79,8 @@ object TextOverlayEffectFactory {
                         .build()
                 }
             }
-        }
 
-        return OverlayEffect(ImmutableList.copyOf(media3Overlays))
+            OverlayEffect(ImmutableList.of(media3Overlay))
+        }
     }
 }
