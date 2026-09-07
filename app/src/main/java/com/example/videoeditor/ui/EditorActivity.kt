@@ -692,12 +692,12 @@ class EditorActivity : AppCompatActivity() {
             val clipLocalOverlays = com.example.videoeditor.effects.TextOverlayEffectFactory.overlaysForWindow(
                 project.textOverlays, clipGlobalStartMs, clip.timelineDurationMs
             )
-            com.example.videoeditor.effects.TextOverlayEffectFactory.build(clipLocalOverlays).forEach { effects += it }
-
             val clipLocalImageOverlays = com.example.videoeditor.effects.ImageOverlayEffectFactory.overlaysForWindow(
                 project.imageOverlays, clipGlobalStartMs, clip.timelineDurationMs
             )
-            com.example.videoeditor.effects.ImageOverlayEffectFactory.build(this, clipLocalImageOverlays).forEach { effects += it }
+            com.example.videoeditor.effects.CompositeOverlayEffectFactory.build(
+                this, clipLocalOverlays, clipLocalImageOverlays
+            )?.let { effects += it }
 
             // Same fade logic as TimelineExporter, so preview matches export.
             val previousClip = project.clips.getOrNull(index - 1)

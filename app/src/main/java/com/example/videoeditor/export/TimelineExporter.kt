@@ -186,12 +186,12 @@ class TimelineExporter(private val context: Context) {
             val clipLocalOverlays = TextOverlayEffectFactory.overlaysForWindow(
                 project.textOverlays, cumulativeGlobalStartMs, clip.timelineDurationMs
             )
-            TextOverlayEffectFactory.build(clipLocalOverlays).forEach { videoEffects += it }
-
             val clipLocalImageOverlays = com.example.videoeditor.effects.ImageOverlayEffectFactory.overlaysForWindow(
                 project.imageOverlays, cumulativeGlobalStartMs, clip.timelineDurationMs
             )
-            com.example.videoeditor.effects.ImageOverlayEffectFactory.build(context, clipLocalImageOverlays).forEach { videoEffects += it }
+            com.example.videoeditor.effects.CompositeOverlayEffectFactory.build(
+                context, clipLocalOverlays, clipLocalImageOverlays
+            )?.let { videoEffects += it }
 
             cumulativeGlobalStartMs += clip.timelineDurationMs
 
