@@ -17,32 +17,22 @@ import com.google.common.collect.ImmutableList
 
 /**
  * Renders ALL currently-active text overlays, stickers, and image overlays
- * onto ONE composited bitmap per frame, using plain Android Canvas drawing,
- * then hands Media3 exactly ONE BitmapOverlay -- never more than one,
- * regardless of how many items are conceptually active.
+ * onto ONE composited bitmap, using plain Android Canvas drawing, then hands
+ * Media3 exactly ONE BitmapOverlay -- never more than one, regardless of how
+ * many items are conceptually active. See class-level history in git log for
+ * why (two earlier approaches assumed things about Media3's OverlayEffect
+ * multi-item behavior that didn't hold up on real-device testing).
  *
- * WHY: two earlier approaches both assumed things about Media3's OverlayEffect
- * that turned out to be wrong on real-device testing -- first, that bundling
- * multiple overlays into one OverlayEffect's internal list would composite
- * them together (only one rendered); then, that chaining multiple separate
- * OverlayEffect instances in sequence would stack them (same result: only
- * one showed). Rather than keep guessing at undocumented multi-overlay
- * behavior, this does the compositing ourselves in a domain we have complete
- * control and certainty over -- plain 2D Canvas drawing -- and only ever
- * hands Media3 a single, already-finished overlay layer.
- *
- * Tradeoffs, stated plainly:
- *  - A new bitmap is allocated and drawn every time getBitmap() is called
- *    (per relevant frame). Fine for typical use; could get expensive for
- *    very long exports with many overlays -- a caching layer keyed by
- *    rounded presentationTimeUs would be the next optimization if that
- *    becomes a real problem.
- *  - The composite is rendered at a FIXED reference resolution (see
- *    CANVAS_WIDTH/CANVAS_HEIGHT) rather than the actual output resolution,
- *    the same "known imprecision" tradeoff already accepted for image
- *    overlay sizing -- avoids depending on an exact frame-size hookup
- *    through the effect pipeline, at the cost of overlay sizing looking
- *    slightly different across very different export resolutions.
+ * CRITICAL PERFORMANCE NOTE: getBitmap() is called by Media3's render
+ * pipeline for potentially every single frame (30-60 times/second). An
+ * earlier version of this file allocated a brand-new several-megabyte bitmap
+ * on every call, which flooded memory and crashed/froze playback entirely
+ * (black screen, unresponsive player) -- a real regression that shipped
+ * briefly. This version CACHES the composited bitmap and only regenerates it
+ * when the actual SET of active overlays changes (i.e., when something
+ * starts or stops being visible), which happens rarely compared to the
+ * frame rate -- the overwhelming majority of getBitmap() calls now just
+ * return the same cached Bitmap instance instead of allocating a new one.
  */
 @UnstableApi
 object CompositeOverlayEffectFactory {
@@ -68,70 +58,111 @@ object CompositeOverlayEffectFactory {
         }.toMap()
 
         val media3Overlay = object : BitmapOverlay() {
+            // Cache: only regenerate the composite when the active set changes.
+            private var cachedBitmap: Bitmap? = null
+            private var cachedKey: String? = null
+
             override fun getBitmap(presentationTimeUs: Long): Bitmap {
-                val timeMs = presentationTimeUs / 1000
-                val composite = Bitmap.createBitmap(CANVAS_WIDTH, CANVAS_HEIGHT, Bitmap.Config.ARGB_8888)
-                val canvas = Canvas(composite)
+                return try {
+                    val timeMs = presentationTimeUs / 1000
+                    val activeText = textOverlays.filter { timeMs in it.startMs..it.endMs }
+                    val activeImages = imageOverlays.filter { timeMs in it.startMs..it.endMs }
 
-                // Images first (more "background"-like), text/stickers on top.
-                for (overlay in imageOverlays) {
-                    if (timeMs !in overlay.startMs..overlay.endMs) continue
-                    val bitmap = decodedImages[overlay.id] ?: continue
-                    val targetWidth = CANVAS_WIDTH * 0.3f * overlay.scale
-                    val targetHeight = targetWidth * (bitmap.height.toFloat() / bitmap.width.toFloat())
-                    val cx = overlay.x * CANVAS_WIDTH
-                    val cy = overlay.y * CANVAS_HEIGHT
-                    val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                        alpha = (overlay.opacity.coerceIn(0f, 1f) * 255).toInt()
+                    // Key changes only when WHICH items are visible changes, not
+                    // every frame -- e.g. "text-id-1,text-id-2|image-id-1".
+                    val key = buildString {
+                        append(activeText.joinToString(",") { it.id })
+                        append('|')
+                        append(activeImages.joinToString(",") { it.id })
                     }
-                    val destRect = RectF(cx - targetWidth / 2f, cy - targetHeight / 2f, cx + targetWidth / 2f, cy + targetHeight / 2f)
-                    canvas.drawBitmap(bitmap, null, destRect, paint)
+
+                    val existing = cachedBitmap
+                    if (key == cachedKey && existing != null) {
+                        existing
+                    } else {
+                        val composite = renderComposite(activeText, activeImages, decodedImages)
+                        cachedBitmap = composite
+                        cachedKey = key
+                        composite
+                    }
+                } catch (e: Exception) {
+                    // This runs on Media3's render thread, not caught by any
+                    // try/catch at the call site that builds this effect --
+                    // a failure here must not propagate into the render
+                    // pipeline (that's exactly what caused a black-screen/
+                    // frozen-player regression once already). Fall back to a
+                    // reused transparent bitmap instead of crashing.
+                    fallbackBitmap ?: Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888).also { fallbackBitmap = it }
                 }
-
-                for (overlay in textOverlays) {
-                    if (timeMs !in overlay.startMs..overlay.endMs) continue
-                    val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                        color = overlay.colorArgb
-                        // sizeSp was tuned for a phone-density UI preview; scale
-                        // it relative to our fixed reference canvas width instead.
-                        textSize = overlay.sizeSp * (CANVAS_WIDTH / 360f)
-                        textAlign = Paint.Align.CENTER
-                    }
-                    val cx = overlay.x * CANVAS_WIDTH
-                    val cy = overlay.y * CANVAS_HEIGHT
-
-                    if (overlay.hasBackground) {
-                        val bounds = Rect()
-                        textPaint.getTextBounds(overlay.text, 0, overlay.text.length, bounds)
-                        val pad = 12f
-                        val bgPaint = Paint().apply { color = Color.argb(160, 0, 0, 0) }
-                        canvas.drawRect(
-                            cx - bounds.width() / 2f - pad,
-                            cy + bounds.top - pad,
-                            cx + bounds.width() / 2f + pad,
-                            cy + bounds.bottom + pad,
-                            bgPaint
-                        )
-                    }
-
-                    canvas.drawText(overlay.text, cx, cy, textPaint)
-                }
-
-                return composite
             }
+
+            private var fallbackBitmap: Bitmap? = null
 
             override fun getOverlaySettings(presentationTimeUs: Long): OverlaySettings =
                 OverlaySettings.Builder()
                     .setAlphaScale(1f)
                     // Full-frame composite anchored center-to-center; individual
                     // item visibility/position is already baked into the bitmap
-                    // we drew above, not handled via per-item anchors anymore.
+                    // above, not handled via per-item anchors anymore.
                     .setBackgroundFrameAnchor(0f, 0f)
                     .setOverlayFrameAnchor(0f, 0f)
                     .build()
         }
 
         return OverlayEffect(ImmutableList.of(media3Overlay))
+    }
+
+    private fun renderComposite(
+        activeText: List<TextOverlay>,
+        activeImages: List<ImageOverlay>,
+        decodedImages: Map<String, Bitmap>
+    ): Bitmap {
+        val composite = Bitmap.createBitmap(CANVAS_WIDTH, CANVAS_HEIGHT, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(composite)
+
+        // Images first (more "background"-like), text/stickers on top.
+        for (overlay in activeImages) {
+            val bitmap = decodedImages[overlay.id] ?: continue
+            val targetWidth = CANVAS_WIDTH * 0.3f * overlay.scale
+            val targetHeight = targetWidth * (bitmap.height.toFloat() / bitmap.width.toFloat())
+            val cx = overlay.x * CANVAS_WIDTH
+            val cy = overlay.y * CANVAS_HEIGHT
+            val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                alpha = (overlay.opacity.coerceIn(0f, 1f) * 255).toInt()
+            }
+            val destRect = RectF(cx - targetWidth / 2f, cy - targetHeight / 2f, cx + targetWidth / 2f, cy + targetHeight / 2f)
+            canvas.drawBitmap(bitmap, null, destRect, paint)
+        }
+
+        for (overlay in activeText) {
+            val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = overlay.colorArgb
+                // sizeSp was tuned for a phone-density UI preview; scale it
+                // relative to our fixed reference canvas width instead.
+                textSize = overlay.sizeSp * (CANVAS_WIDTH / 360f)
+                textAlign = Paint.Align.CENTER
+            }
+            val cx = overlay.x * CANVAS_WIDTH
+            val cy = overlay.y * CANVAS_HEIGHT
+
+            if (overlay.hasBackground) {
+                val bounds = Rect()
+                textPaint.getTextBounds(overlay.text, 0, overlay.text.length, bounds)
+                val pad = 12f
+                val bgPaint = Paint().apply { color = Color.argb(160, 0, 0, 0) }
+                canvas.drawRect(
+                    cx - bounds.width() / 2f - pad,
+                    cy + bounds.top - pad,
+                    cx + bounds.width() / 2f + pad,
+                    cy + bounds.bottom + pad,
+                    bgPaint
+                )
+            }
+
+            canvas.drawText(overlay.text, cx, cy, textPaint)
+        }
+
+        return composite
     }
 
     private fun loadBitmap(context: Context, uri: android.net.Uri): Bitmap? {
