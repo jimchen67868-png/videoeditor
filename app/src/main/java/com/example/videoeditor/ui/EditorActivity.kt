@@ -695,9 +695,15 @@ class EditorActivity : AppCompatActivity() {
             val clipLocalImageOverlays = com.example.videoeditor.effects.ImageOverlayEffectFactory.overlaysForWindow(
                 project.imageOverlays, clipGlobalStartMs, clip.timelineDurationMs
             )
-            com.example.videoeditor.effects.CompositeOverlayEffectFactory.build(
-                this, clipLocalOverlays, clipLocalImageOverlays
-            )?.let { effects += it }
+            // KNOWN LIMITATION: only ONE overlay renders per clip -- see the
+            // matching comment in TimelineExporter for why (two attempts at
+            // simultaneous overlays both broke basic playback on real-device
+            // testing and had to be reverted).
+            if (clipLocalOverlays.isNotEmpty()) {
+                com.example.videoeditor.effects.TextOverlayEffectFactory.build(clipLocalOverlays.takeLast(1)).forEach { effects += it }
+            } else if (clipLocalImageOverlays.isNotEmpty()) {
+                com.example.videoeditor.effects.ImageOverlayEffectFactory.build(this, clipLocalImageOverlays.takeLast(1)).forEach { effects += it }
+            }
 
             // Same fade logic as TimelineExporter, so preview matches export.
             val previousClip = project.clips.getOrNull(index - 1)

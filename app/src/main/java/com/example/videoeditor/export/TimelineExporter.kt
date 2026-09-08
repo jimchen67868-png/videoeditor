@@ -189,9 +189,20 @@ class TimelineExporter(private val context: Context) {
             val clipLocalImageOverlays = com.example.videoeditor.effects.ImageOverlayEffectFactory.overlaysForWindow(
                 project.imageOverlays, cumulativeGlobalStartMs, clip.timelineDurationMs
             )
-            com.example.videoeditor.effects.CompositeOverlayEffectFactory.build(
-                context, clipLocalOverlays, clipLocalImageOverlays
-            )?.let { videoEffects += it }
+            // KNOWN LIMITATION: only ONE overlay (text takes priority over
+            // image; most-recently-added wins if several are active at once)
+            // renders per clip right now. Two attempts at showing multiple
+            // simultaneous overlays both broke basic playback entirely on
+            // real-device testing (worse than this limitation) and had to be
+            // reverted. This single-overlay path is the one that's actually
+            // been confirmed working.
+            if (clipLocalOverlays.isNotEmpty()) {
+                TextOverlayEffectFactory.build(clipLocalOverlays.takeLast(1)).forEach { videoEffects += it }
+            } else if (clipLocalImageOverlays.isNotEmpty()) {
+                com.example.videoeditor.effects.ImageOverlayEffectFactory.build(
+                    context, clipLocalImageOverlays.takeLast(1)
+                ).forEach { videoEffects += it }
+            }
 
             cumulativeGlobalStartMs += clip.timelineDurationMs
 
