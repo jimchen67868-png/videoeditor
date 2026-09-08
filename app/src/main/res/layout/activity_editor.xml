@@ -77,7 +77,7 @@
             android:id="@+id/overlayProxyBox"
             android:layout_width="120dp"
             android:layout_height="60dp"
-            android:background="#33FFFFFF"
+            android:background="@drawable/overlay_proxy_border"
             android:visibility="gone">
 
             <TextView
@@ -85,7 +85,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
                 android:gravity="center"
-                android:textColor="#FFFFFF"
+                android:textColor="@android:color/transparent"
                 android:textSize="16sp"
                 android:singleLine="true"
                 android:ellipsize="end" />
@@ -95,6 +95,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
                 android:scaleType="fitCenter"
+                android:alpha="0"
                 android:visibility="gone" />
 
             <View
