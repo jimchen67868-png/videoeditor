@@ -695,19 +695,17 @@ class EditorActivity : AppCompatActivity() {
             val clipLocalImageOverlays = com.example.videoeditor.effects.ImageOverlayEffectFactory.overlaysForWindow(
                 project.imageOverlays, clipGlobalStartMs, clip.timelineDurationMs
             )
-            // TEMPORARILY DISABLED as a diagnostic step: text/image overlays
-            // are not being added to the effects chain right now. After
-            // repeated playback-breaking regressions from overlay rendering
-            // that I couldn't reliably diagnose through code review alone
-            // (no way to test GL/bitmap rendering changes on a real device
-            // before shipping them), this isolates the variable -- if basic
-            // playback is now reliably stable with clips/filters/transitions
-            // but no overlays, that confirms the overlay effect application
-            // itself is the cause, and overlay rendering can be re-approached
-            // more carefully from a known-good baseline instead of guessing
-            // further. The overlay DATA (position, timing, content) is all
-            // still fully editable -- it just won't visually render until
-            // this is re-enabled.
+            // DISABLED for live preview specifically. A diagnostic test
+            // confirmed overlay rendering was the actual cause of repeated
+            // playback-breaking crashes (video freezing/black screen after
+            // adding text). Export (Media3 Transformer, a separate and more
+            // mature pipeline) has overlay rendering RE-ENABLED -- see
+            // TimelineExporter -- since it was never directly implicated in
+            // any of the crashes, only this live preview (ExoPlayer's
+            // video-effects pipeline) was. Practical result: text/stickers/
+            // images won't show while editing, but WILL appear correctly in
+            // the exported video. Overlay data (position, timing, content)
+            // remains fully editable either way.
             // if (clipLocalOverlays.isNotEmpty()) {
             //     com.example.videoeditor.effects.TextOverlayEffectFactory.build(clipLocalOverlays.takeLast(1)).forEach { effects += it }
             // } else if (clipLocalImageOverlays.isNotEmpty()) {
