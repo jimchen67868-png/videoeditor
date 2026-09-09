@@ -695,15 +695,24 @@ class EditorActivity : AppCompatActivity() {
             val clipLocalImageOverlays = com.example.videoeditor.effects.ImageOverlayEffectFactory.overlaysForWindow(
                 project.imageOverlays, clipGlobalStartMs, clip.timelineDurationMs
             )
-            // KNOWN LIMITATION: only ONE overlay renders per clip -- see the
-            // matching comment in TimelineExporter for why (two attempts at
-            // simultaneous overlays both broke basic playback on real-device
-            // testing and had to be reverted).
-            if (clipLocalOverlays.isNotEmpty()) {
-                com.example.videoeditor.effects.TextOverlayEffectFactory.build(clipLocalOverlays.takeLast(1)).forEach { effects += it }
-            } else if (clipLocalImageOverlays.isNotEmpty()) {
-                com.example.videoeditor.effects.ImageOverlayEffectFactory.build(this, clipLocalImageOverlays.takeLast(1)).forEach { effects += it }
-            }
+            // TEMPORARILY DISABLED as a diagnostic step: text/image overlays
+            // are not being added to the effects chain right now. After
+            // repeated playback-breaking regressions from overlay rendering
+            // that I couldn't reliably diagnose through code review alone
+            // (no way to test GL/bitmap rendering changes on a real device
+            // before shipping them), this isolates the variable -- if basic
+            // playback is now reliably stable with clips/filters/transitions
+            // but no overlays, that confirms the overlay effect application
+            // itself is the cause, and overlay rendering can be re-approached
+            // more carefully from a known-good baseline instead of guessing
+            // further. The overlay DATA (position, timing, content) is all
+            // still fully editable -- it just won't visually render until
+            // this is re-enabled.
+            // if (clipLocalOverlays.isNotEmpty()) {
+            //     com.example.videoeditor.effects.TextOverlayEffectFactory.build(clipLocalOverlays.takeLast(1)).forEach { effects += it }
+            // } else if (clipLocalImageOverlays.isNotEmpty()) {
+            //     com.example.videoeditor.effects.ImageOverlayEffectFactory.build(this, clipLocalImageOverlays.takeLast(1)).forEach { effects += it }
+            // }
 
             // Same fade logic as TimelineExporter, so preview matches export.
             val previousClip = project.clips.getOrNull(index - 1)

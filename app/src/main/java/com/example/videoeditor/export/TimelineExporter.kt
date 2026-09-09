@@ -189,20 +189,18 @@ class TimelineExporter(private val context: Context) {
             val clipLocalImageOverlays = com.example.videoeditor.effects.ImageOverlayEffectFactory.overlaysForWindow(
                 project.imageOverlays, cumulativeGlobalStartMs, clip.timelineDurationMs
             )
-            // KNOWN LIMITATION: only ONE overlay (text takes priority over
-            // image; most-recently-added wins if several are active at once)
-            // renders per clip right now. Two attempts at showing multiple
-            // simultaneous overlays both broke basic playback entirely on
-            // real-device testing (worse than this limitation) and had to be
-            // reverted. This single-overlay path is the one that's actually
-            // been confirmed working.
-            if (clipLocalOverlays.isNotEmpty()) {
-                TextOverlayEffectFactory.build(clipLocalOverlays.takeLast(1)).forEach { videoEffects += it }
-            } else if (clipLocalImageOverlays.isNotEmpty()) {
-                com.example.videoeditor.effects.ImageOverlayEffectFactory.build(
-                    context, clipLocalImageOverlays.takeLast(1)
-                ).forEach { videoEffects += it }
-            }
+            // TEMPORARILY DISABLED as a diagnostic step (matching EditorActivity's
+            // live preview) -- see the detailed comment there. Overlay DATA is
+            // still fully intact; it just isn't added to export's effects chain
+            // right now until the preview crash is confirmed fixed and overlay
+            // rendering can be re-approached carefully.
+            // if (clipLocalOverlays.isNotEmpty()) {
+            //     TextOverlayEffectFactory.build(clipLocalOverlays.takeLast(1)).forEach { videoEffects += it }
+            // } else if (clipLocalImageOverlays.isNotEmpty()) {
+            //     com.example.videoeditor.effects.ImageOverlayEffectFactory.build(
+            //         context, clipLocalImageOverlays.takeLast(1)
+            //     ).forEach { videoEffects += it }
+            // }
 
             cumulativeGlobalStartMs += clip.timelineDurationMs
 
