@@ -202,7 +202,7 @@ class TimelineExporter(private val context: Context) {
             // multiple simultaneous overlays caused the original crashes and
             // haven't been safely re-approached yet.
             if (clipLocalOverlays.isNotEmpty()) {
-                TextOverlayEffectFactory.build(clipLocalOverlays.takeLast(1)).forEach { videoEffects += it }
+                TextOverlayEffectFactory.build(clipLocalOverlays.takeLast(1), settings.resolution.width).forEach { videoEffects += it }
             } else if (clipLocalImageOverlays.isNotEmpty()) {
                 com.example.videoeditor.effects.ImageOverlayEffectFactory.build(
                     context, clipLocalImageOverlays.takeLast(1)

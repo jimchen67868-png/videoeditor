@@ -52,12 +52,24 @@ object TextOverlayEffectFactory {
         }
     }
 
-    /** Returns one OverlayEffect per overlay (empty list if [overlays] is empty). */
-    fun build(overlays: List<TextOverlay>): List<OverlayEffect> {
+    /**
+     * Returns one OverlayEffect per overlay (empty list if [overlays] is empty).
+     *
+     * @param referenceWidthPx used to scale text size in ABSOLUTE PIXELS rather
+     *   than density-dependent sp. AbsoluteSizeSpan's dip=true mode needs a
+     *   valid display-density context to convert sp to pixels -- Transformer's
+     *   offline export pipeline may not reliably have that available, which
+     *   could silently render text at near-zero size (technically "there" but
+     *   invisible) rather than throwing an error. Using dip=false with a size
+     *   pre-scaled relative to the actual output width removes that
+     *   dependency entirely.
+     */
+    fun build(overlays: List<TextOverlay>, referenceWidthPx: Int = 1080): List<OverlayEffect> {
         return overlays.map { overlay ->
+            val pixelSize = (overlay.sizeSp * (referenceWidthPx / 360f)).toInt().coerceAtLeast(1)
             val spannable = SpannableString(overlay.text).apply {
                 setSpan(ForegroundColorSpan(overlay.colorArgb), 0, overlay.text.length, 0)
-                setSpan(AbsoluteSizeSpan(overlay.sizeSp.toInt(), true), 0, overlay.text.length, 0)
+                setSpan(AbsoluteSizeSpan(pixelSize, false), 0, overlay.text.length, 0)
                 if (overlay.hasBackground) {
                     setSpan(BackgroundColorSpan(android.graphics.Color.argb(160, 0, 0, 0)), 0, overlay.text.length, 0)
                 }
