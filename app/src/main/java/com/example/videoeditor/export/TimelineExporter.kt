@@ -189,25 +189,21 @@ class TimelineExporter(private val context: Context) {
             val clipLocalImageOverlays = com.example.videoeditor.effects.ImageOverlayEffectFactory.overlaysForWindow(
                 project.imageOverlays, cumulativeGlobalStartMs, clip.timelineDurationMs
             )
-            // RE-ENABLED for export specifically (unlike EditorActivity's live
-            // preview, which stays disabled). A diagnostic test confirmed
-            // overlay rendering was the actual crash source -- but every
-            // single crash report was in the LIVE PREVIEW screen (ExoPlayer's
-            // video-effects pipeline), never in an exported file. Export uses
-            // Media3 Transformer, a separate and more mature pipeline for
-            // exactly this kind of offline effects work, that was never
-            // directly implicated. Known limitation right now: only ONE
-            // overlay renders per clip (text takes priority over image;
-            // most-recently-added wins if several overlap in time) --
-            // multiple simultaneous overlays caused the original crashes and
-            // haven't been safely re-approached yet.
-            if (clipLocalOverlays.isNotEmpty()) {
-                TextOverlayEffectFactory.build(clipLocalOverlays.takeLast(1), settings.resolution.width).forEach { videoEffects += it }
-            } else if (clipLocalImageOverlays.isNotEmpty()) {
-                com.example.videoeditor.effects.ImageOverlayEffectFactory.build(
-                    context, clipLocalImageOverlays.takeLast(1)
-                ).forEach { videoEffects += it }
-            }
+            // EXPORT-ONLY (live preview stays disabled -- confirmed unstable
+            // there). Previously limited to ONE overlay per clip here as a
+            // safety measure while the crash was being diagnosed -- but that
+            // crash was in the LIVE PREVIEW specifically, and the actual
+            // "text invisible in export" bug turned out to be a text-sizing
+            // issue (density-dependent sp needing display context Transformer
+            // may not have offline), now fixed. The single-overlay limit was
+            // never actually proven necessary for EXPORT -- re-enabling
+            // multiple simultaneous overlays (chained OverlayEffects, plus
+            // BOTH text and image together rather than one-or-the-other) as a
+            // cautious next test now that the confounding sizing bug is gone.
+            TextOverlayEffectFactory.build(clipLocalOverlays, settings.resolution.width).forEach { videoEffects += it }
+            com.example.videoeditor.effects.ImageOverlayEffectFactory.build(
+                context, clipLocalImageOverlays
+            ).forEach { videoEffects += it }
 
             cumulativeGlobalStartMs += clip.timelineDurationMs
 
