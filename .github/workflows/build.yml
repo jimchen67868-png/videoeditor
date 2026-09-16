@@ -23,6 +23,14 @@ jobs:
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          # The action's own default packages list still includes "tools",
+          # a legacy SDK component Google removed years ago -- sdkmanager
+          # now fails outright ("Failed to find package 'tools'") if asked
+          # for it, killing the whole job before Gradle even runs. Override
+          # with just what's actually needed; AGP handles build-tools/
+          # platforms itself based on compileSdk/targetSdk in build.gradle.kts.
+          packages: 'platform-tools'
 
       # Pin an exact Gradle version known to work with AGP 8.5.2 / KSP,
       # rather than letting the runner pick whatever "gradle" resolves to.
