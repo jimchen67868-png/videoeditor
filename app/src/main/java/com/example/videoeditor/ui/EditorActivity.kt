@@ -62,6 +62,15 @@ class EditorActivity : AppCompatActivity() {
     private var activeOverlayKind: OverlayKind? = null
     private var isDraggingOverlay = false
     private var isResizingOverlay = false
+    // Reference metrics defining the box-size <-> model-metric mapping used
+    // by syncOverlayProxy/commitOverlayTransform: a box at the base 120x60dp
+    // size corresponds to a text overlay at this sizeSp, or an image overlay
+    // at this scale. Arbitrary but must stay fixed once chosen, since resize
+    // deltas and reselect-time box sizing both derive from it.
+    private companion object {
+        const val REFERENCE_TEXT_SIZE_SP = 24f
+        const val REFERENCE_IMAGE_SCALE = 1f
+    }
     private var dragTouchStartRawX = 0f
     private var dragTouchStartRawY = 0f
     private var dragBoxStartX = 0f
@@ -474,22 +483,42 @@ class EditorActivity : AppCompatActivity() {
      * the gesture mid-drag.
      */
     private fun syncOverlayProxy(project: com.example.videoeditor.model.Project, globalPositionMs: Long) {
+        // Compute BOTH kinds unconditionally -- previously activeImageOverlays
+        // was forced to an empty list whenever any text overlay was active,
+        // which meant an image overlay could never be selected/edited at all
+        // once it overlapped a text overlay in time, no matter what the user
+        // tapped on the timeline. That was the root cause of "can't select
+        // overlay": the Image track in the screenshot overlaps text 1/text 2,
+        // so it was permanently locked out.
         val activeTextOverlays = project.textOverlays.filter { globalPositionMs in it.startMs..it.endMs }
-        val activeImageOverlays = if (activeTextOverlays.isEmpty()) {
-            project.imageOverlays.filter { globalPositionMs in it.startMs..it.endMs }
-        } else emptyList()
+        val activeImageOverlays = project.imageOverlays.filter { globalPositionMs in it.startMs..it.endMs }
 
-        // When multiple overlays overlap in time, prefer whichever one is
-        // explicitly selected on the timeline (tapped lane) over just
-        // grabbing the first match -- otherwise the proxy would always show/
-        // edit the same one regardless of which you selected, making it
-        // impossible to work with the others while they overlap.
+        // When multiple overlays overlap in time, an EXPLICIT selection
+        // (tapped lane on the timeline) must win outright, regardless of
+        // kind -- otherwise text silently keeps priority over image even
+        // when the user just tapped "Image". Only fall back to "first text,
+        // else first image" when nothing is explicitly selected in this window.
         val selectedTextId = viewModel.selectedOverlayId.value
         val selectedImageId = viewModel.selectedImageOverlayId.value
-        val textOverlay = activeTextOverlays.firstOrNull { it.id == selectedTextId } ?: activeTextOverlays.firstOrNull()
-        val imageOverlay = if (textOverlay == null) {
-            activeImageOverlays.firstOrNull { it.id == selectedImageId } ?: activeImageOverlays.firstOrNull()
-        } else null
+        val explicitText = activeTextOverlays.firstOrNull { it.id == selectedTextId }
+        val explicitImage = activeImageOverlays.firstOrNull { it.id == selectedImageId }
+
+        val textOverlay: com.example.videoeditor.model.TextOverlay?
+        val imageOverlay: com.example.videoeditor.model.ImageOverlay?
+        when {
+            explicitImage != null -> {
+                imageOverlay = explicitImage
+                textOverlay = null
+            }
+            explicitText != null -> {
+                textOverlay = explicitText
+                imageOverlay = null
+            }
+            else -> {
+                textOverlay = activeTextOverlays.firstOrNull()
+                imageOverlay = if (textOverlay == null) activeImageOverlays.firstOrNull() else null
+            }
+        }
 
         if (textOverlay == null && imageOverlay == null) {
             binding.overlayProxyBox.visibility = android.view.View.GONE
@@ -536,8 +565,27 @@ class EditorActivity : AppCompatActivity() {
         // this same active window (position already committed to the model,
         // this just avoids a visible jump every poll tick).
         if (isNewSelection) {
-            val boxWidthPx = (120 * resources.displayMetrics.density).toInt()
-            val boxHeightPx = (60 * resources.displayMetrics.density).toInt()
+            // Box size must be DERIVED from the overlay's actual saved
+            // sizeSp/scale here, not reset to a fixed constant -- previously
+            // every reselect snapped back to a hardcoded 120x60dp box no
+            // matter what size had been committed, so a resized overlay
+            // looked wrong (and was misleading to resize further) the moment
+            // you tapped away and back. REFERENCE_SP/REFERENCE_SCALE define
+            // the box size <-> model metric mapping used consistently here;
+            // the drag-resize handler above already computes new metrics as
+            // a ratio of box-height change, so as long as the starting box
+            // height truthfully reflects the current model value, resizing
+            // stays self-consistent across repeated select/resize/deselect cycles.
+            val baseWidthPx = (120 * resources.displayMetrics.density).toInt()
+            val baseHeightPx = (60 * resources.displayMetrics.density).toInt()
+            val minSizePx = (30 * resources.displayMetrics.density).toInt()
+            val sizeRatio = when {
+                textOverlay != null -> textOverlay.sizeSp / REFERENCE_TEXT_SIZE_SP
+                imageOverlay != null -> imageOverlay.scale / REFERENCE_IMAGE_SCALE
+                else -> 1f
+            }
+            val boxWidthPx = (baseWidthPx * sizeRatio).toInt().coerceAtLeast(minSizePx)
+            val boxHeightPx = (baseHeightPx * sizeRatio).toInt().coerceAtLeast(minSizePx)
             binding.overlayProxyBox.layoutParams = binding.overlayProxyBox.layoutParams.apply {
                 width = boxWidthPx
                 height = boxHeightPx
