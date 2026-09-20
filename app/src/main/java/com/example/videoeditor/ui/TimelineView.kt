@@ -252,10 +252,21 @@ class TimelineView @JvmOverloads constructor(
         val itemCount = buildTrackItems().size
         val lanesHeight = if (itemCount == 0) 0f else itemCount * laneHeightPx + (itemCount - 1) * laneGapPx
         val desiredHeight = (lanesTop() + lanesHeight).toInt()
-        val heightMode = MeasureSpec.getMode(heightMeasureSpec)
-        val height = if (heightMode == MeasureSpec.EXACTLY) MeasureSpec.getSize(heightMeasureSpec) else desiredHeight
 
-        setMeasuredDimension(desiredWidth, height)
+        // Height is ALWAYS content-driven, never overridden by the parent's
+        // measure spec mode. This view lives inside a HorizontalScrollView,
+        // which measures its child's cross-axis (height) with EXACTLY mode
+        // sized to whatever height IT resolved for itself -- if that
+        // resolution came from an earlier/smaller measure pass (e.g. before
+        // a music track was added, or simply because of how the outer
+        // ScrollView elsewhere in this layout hierarchy resolves its own
+        // wrap_content sizing), honoring EXACTLY here would silently clip
+        // whichever lanes don't fit within that stale height. Since Android
+        // clips a View's drawing to its own measured bounds, those lanes
+        // would still be drawn -- just invisible below the clipped edge --
+        // which is exactly what caused music track lanes to render blank
+        // even though the underlying data and drawing code were both fine.
+        setMeasuredDimension(desiredWidth, desiredHeight)
     }
 
     override fun onDraw(canvas: Canvas) {
