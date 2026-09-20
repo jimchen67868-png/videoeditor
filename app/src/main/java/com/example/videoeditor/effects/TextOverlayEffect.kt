@@ -64,7 +64,7 @@ object TextOverlayEffectFactory {
      *   pre-scaled relative to the actual output width removes that
      *   dependency entirely.
      */
-    fun build(overlays: List<TextOverlay>, referenceWidthPx: Int = 1080): List<OverlayEffect> {
+    fun build(overlays: List<TextOverlay>, referenceWidthPx: Int = 1080): List<Pair<Int, OverlayEffect>> {
         return overlays.map { overlay ->
             val pixelSize = (overlay.sizeSp * (referenceWidthPx / 360f)).toInt().coerceAtLeast(1)
             val spannable = SpannableString(overlay.text).apply {
@@ -110,7 +110,7 @@ object TextOverlayEffectFactory {
                 }
             }
 
-            OverlayEffect(ImmutableList.of(media3Overlay))
+            overlay.zIndex to OverlayEffect(ImmutableList.of(media3Overlay))
         }
     }
 }

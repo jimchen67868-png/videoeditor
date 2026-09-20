@@ -216,10 +216,19 @@ class TimelineExporter(private val context: Context) {
             // multiple simultaneous overlays (chained OverlayEffects, plus
             // BOTH text and image together rather than one-or-the-other) as a
             // cautious next test now that the confounding sizing bug is gone.
-            TextOverlayEffectFactory.build(clipLocalOverlays, settings.resolution.width).forEach { videoEffects += it }
-            com.example.videoeditor.effects.ImageOverlayEffectFactory.build(
+            // Text is added to the combined list before image, so a STABLE
+            // sort by zIndex preserves the app's old fixed behavior (image on
+            // top) for the common case where every overlay is still at the
+            // default zIndex 0 -- ordering only changes once the user
+            // explicitly moves something via zIndex.
+            val layeredOverlayEffects = mutableListOf<Pair<Int, Effect>>()
+            layeredOverlayEffects += TextOverlayEffectFactory.build(clipLocalOverlays, settings.resolution.width)
+            layeredOverlayEffects += com.example.videoeditor.effects.ImageOverlayEffectFactory.build(
                 context, clipLocalImageOverlays
-            ).forEach { videoEffects += it }
+            )
+            layeredOverlayEffects
+                .sortedBy { (zIndex, _) -> zIndex }
+                .forEach { (_, effect) -> videoEffects += effect }
 
             cumulativeGlobalStartMs += clip.timelineDurationMs
 

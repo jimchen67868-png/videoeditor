@@ -44,7 +44,7 @@ object ImageOverlayEffectFactory {
         }
     }
 
-    fun build(context: Context, overlays: List<ImageOverlay>): List<OverlayEffect> {
+    fun build(context: Context, overlays: List<ImageOverlay>): List<Pair<Int, OverlayEffect>> {
         return overlays.mapNotNull { overlay ->
             val bitmap = loadScaledBitmap(context, overlay) ?: return@mapNotNull null
 
@@ -69,7 +69,7 @@ object ImageOverlayEffectFactory {
                 }
             }
 
-            OverlayEffect(ImmutableList.of(media3Overlay))
+            overlay.zIndex to OverlayEffect(ImmutableList.of(media3Overlay))
         }
     }
 

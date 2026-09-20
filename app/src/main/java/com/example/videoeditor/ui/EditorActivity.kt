@@ -136,6 +136,13 @@ class EditorActivity : AppCompatActivity() {
                 Toast.LENGTH_LONG
             ).show()
             viewModel.setExportProgress(-1)
+            // runExport() called player.stop()/musicPlayer.stop() to free the
+            // decoder for the export service's own codec use. Re-prepare now
+            // that export is done so the preview works again; playWhenReady
+            // is already false from the pause() call before stop(), so this
+            // won't auto-resume playback.
+            player.prepare()
+            musicPlayer.prepare()
         }
     }
 
@@ -1111,22 +1118,58 @@ class EditorActivity : AppCompatActivity() {
             return
         }
 
+        val container = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            setPadding(48, 24, 48, 24)
+        }
         val input = android.widget.EditText(this).apply {
             hint = "Opacity % (0-100)"
             inputType = android.text.InputType.TYPE_CLASS_NUMBER
             setText((overlay.opacity * 100).toInt().toString())
         }
+        container.addView(input)
 
-        android.app.AlertDialog.Builder(this)
-            .setTitle("Edit image overlay opacity")
-            .setView(input)
+        val layerRow = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.HORIZONTAL
+            layoutParams = android.widget.LinearLayout.LayoutParams(
+                android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
+                android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = 24 }
+        }
+        val bringToFrontButton = android.widget.Button(this).apply {
+            text = "Bring to Front"
+            layoutParams = android.widget.LinearLayout.LayoutParams(0, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        val sendToBackButton = android.widget.Button(this).apply {
+            text = "Send to Back"
+            layoutParams = android.widget.LinearLayout.LayoutParams(0, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { marginStart = 8 }
+        }
+        layerRow.addView(bringToFrontButton)
+        layerRow.addView(sendToBackButton)
+        container.addView(layerRow)
+
+        val dialog = android.app.AlertDialog.Builder(this)
+            .setTitle("Edit image overlay")
+            .setView(container)
             .setPositiveButton("Save") { _, _ ->
                 val percent = input.text.toString().toFloatOrNull() ?: (overlay.opacity * 100)
                 viewModel.updateImageOverlayOpacity(overlay.id, (percent / 100f).coerceIn(0f, 1f))
                 Toast.makeText(this, "Opacity updated", Toast.LENGTH_SHORT).show()
             }
             .setNegativeButton("Cancel", null)
-            .show()
+            .create()
+
+        bringToFrontButton.setOnClickListener {
+            viewModel.bringOverlayToFront(overlay.id, isImage = true)
+            Toast.makeText(this, "Brought to front", Toast.LENGTH_SHORT).show()
+            dialog.dismiss()
+        }
+        sendToBackButton.setOnClickListener {
+            viewModel.sendOverlayToBack(overlay.id, isImage = true)
+            Toast.makeText(this, "Sent to back", Toast.LENGTH_SHORT).show()
+            dialog.dismiss()
+        }
+        dialog.show()
     }
 
     private fun showMusicPlacementDialog(uri: Uri) {
@@ -1305,7 +1348,36 @@ class EditorActivity : AppCompatActivity() {
             }
         }
 
-        android.app.AlertDialog.Builder(this)
+        // Layer reordering only makes sense for an overlay that already
+        // exists among others -- a brand-new one has nothing to reorder yet.
+        var bringToFrontButton: android.widget.Button? = null
+        var sendToBackButton: android.widget.Button? = null
+        if (isEditing) {
+            val innerContainer = (dialogView as? android.widget.ScrollView)?.getChildAt(0) as? android.widget.LinearLayout
+            val layerLabel = android.widget.TextView(this).apply {
+                text = "Layer order"
+                setPadding(0, 32, 0, 4)
+            }
+            val layerRow = android.widget.LinearLayout(this).apply {
+                orientation = android.widget.LinearLayout.HORIZONTAL
+            }
+            val front = android.widget.Button(this).apply {
+                text = "Bring to Front"
+                layoutParams = android.widget.LinearLayout.LayoutParams(0, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            }
+            val back = android.widget.Button(this).apply {
+                text = "Send to Back"
+                layoutParams = android.widget.LinearLayout.LayoutParams(0, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { marginStart = 8 }
+            }
+            layerRow.addView(front)
+            layerRow.addView(back)
+            innerContainer?.addView(layerLabel)
+            innerContainer?.addView(layerRow)
+            bringToFrontButton = front
+            sendToBackButton = back
+        }
+
+        val dialog = android.app.AlertDialog.Builder(this)
             .setTitle(if (isEditing) "Edit text overlay" else "Add text overlay")
             .setView(dialogView)
             .setPositiveButton(if (isEditing) "Save" else "Add") { _, _ ->
@@ -1339,7 +1411,21 @@ class EditorActivity : AppCompatActivity() {
                 }
             }
             .setNegativeButton("Cancel", null)
-            .show()
+            .create()
+
+        if (isEditing) {
+            bringToFrontButton?.setOnClickListener {
+                viewModel.bringOverlayToFront(existingOverlay!!.id, isImage = false)
+                Toast.makeText(this, "Brought to front", Toast.LENGTH_SHORT).show()
+                dialog.dismiss()
+            }
+            sendToBackButton?.setOnClickListener {
+                viewModel.sendOverlayToBack(existingOverlay!!.id, isImage = false)
+                Toast.makeText(this, "Sent to back", Toast.LENGTH_SHORT).show()
+                dialog.dismiss()
+            }
+        }
+        dialog.show()
     }
 
     private fun removeLastTextOverlay() {
@@ -1441,6 +1527,22 @@ class EditorActivity : AppCompatActivity() {
         val project = viewModel.project.value
         if (project == null || project.clips.isEmpty()) return
         val settings = pendingExportSettings ?: com.example.videoeditor.export.ExportSettings()
+
+        // Release the preview player's decoder before export starts. The
+        // export service allocates its own decoder + encoder via Transformer;
+        // if the live preview's video decoder is still held at the same time,
+        // the two compete for the device's limited hardware codec instances.
+        // That's a classic source of intermittent "works on retry" export
+        // failures: the first attempt(s) hit a transient MediaCodec
+        // allocation failure, and a later attempt succeeds once something
+        // else's codec has been released in the meantime. player.stop()
+        // releases the underlying renderers/decoder while keeping the
+        // Player instance and its current position intact, so the preview
+        // can resume normally once export finishes (see exportResultReceiver).
+        player.pause()
+        player.stop()
+        musicPlayer.pause()
+        musicPlayer.stop()
 
         val tempOutputFile = File(cacheDir, "export_temp_${System.currentTimeMillis()}.mp4")
         ExportRequestHolder.pendingProject = project

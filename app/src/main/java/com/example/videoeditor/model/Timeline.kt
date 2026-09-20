@@ -64,7 +64,12 @@ data class TextOverlay(
     val colorArgb: Int = 0xFFFFFFFF.toInt(),
     val sizeSp: Float = 24f,
     /** If true, renders a semi-transparent black backdrop behind the text -- the typical subtitle/caption look. */
-    val hasBackground: Boolean = false
+    val hasBackground: Boolean = false,
+    /** Draw order relative to OTHER overlays (both text and image). Higher
+     * draws on top. Defaults to 0 -- see ImageOverlay.zIndex for how ties
+     * are broken so existing projects don't visually change until the user
+     * explicitly reorders something. */
+    val zIndex: Int = 0
 )
 
 /**
@@ -142,7 +147,13 @@ data class ImageOverlay(
     val x: Float = 0.5f,
     val y: Float = 0.5f,
     val scale: Float = 1f,
-    val opacity: Float = 1f
+    val opacity: Float = 1f,
+    /** Draw order relative to OTHER overlays (both text and image). Higher
+     * draws on top. Defaults to 0; when a text and an image overlay both
+     * have zIndex 0, the image draws on top -- matching the app's existing
+     * fixed behavior before per-overlay ordering existed, so old projects
+     * don't visually change until the user explicitly reorders something. */
+    val zIndex: Int = 0
 )
 
 data class Project(

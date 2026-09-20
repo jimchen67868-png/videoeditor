@@ -47,7 +47,8 @@ data class TextOverlayDto(
     val y: Float,
     val colorArgb: Int,
     val sizeSp: Float,
-    val hasBackground: Boolean
+    val hasBackground: Boolean,
+    val zIndex: Int = 0
 )
 
 data class AudioTrackDto(
@@ -68,7 +69,8 @@ data class ImageOverlayDto(
     val x: Float,
     val y: Float,
     val scale: Float,
-    val opacity: Float
+    val opacity: Float,
+    val zIndex: Int = 0
 )
 
 fun Project.toDto(): ProjectDto = ProjectDto(
@@ -117,12 +119,12 @@ private fun ClipDto.toModel(): Clip = Clip(
 
 private fun TextOverlay.toDto(): TextOverlayDto = TextOverlayDto(
     id = id, text = text, startMs = startMs, endMs = endMs,
-    x = x, y = y, colorArgb = colorArgb, sizeSp = sizeSp, hasBackground = hasBackground
+    x = x, y = y, colorArgb = colorArgb, sizeSp = sizeSp, hasBackground = hasBackground, zIndex = zIndex
 )
 
 private fun TextOverlayDto.toModel(): TextOverlay = TextOverlay(
     id = id, text = text, startMs = startMs, endMs = endMs,
-    x = x, y = y, colorArgb = colorArgb, sizeSp = sizeSp, hasBackground = hasBackground
+    x = x, y = y, colorArgb = colorArgb, sizeSp = sizeSp, hasBackground = hasBackground, zIndex = zIndex
 )
 
 private fun AudioTrack.toDto(): AudioTrackDto = AudioTrackDto(
@@ -137,10 +139,10 @@ private fun AudioTrackDto.toModel(): AudioTrack = AudioTrack(
 
 private fun ImageOverlay.toDto(): ImageOverlayDto = ImageOverlayDto(
     id = id, sourceUri = sourceUri.toString(), startMs = startMs, endMs = endMs,
-    x = x, y = y, scale = scale, opacity = opacity
+    x = x, y = y, scale = scale, opacity = opacity, zIndex = zIndex
 )
 
 private fun ImageOverlayDto.toModel(): ImageOverlay = ImageOverlay(
     id = id, sourceUri = Uri.parse(sourceUri), startMs = startMs, endMs = endMs,
-    x = x, y = y, scale = scale, opacity = opacity
+    x = x, y = y, scale = scale, opacity = opacity, zIndex = zIndex
 )

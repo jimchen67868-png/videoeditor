@@ -333,6 +333,37 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
         applyUpdate { it.copy(textOverlays = it.textOverlays.filterNot { o -> o.id == overlayId }) }
     }
 
+    /**
+     * Moves an overlay (text or image, identified by id) above/below every
+     * OTHER overlay currently in the project, text and image combined --
+     * zIndex is compared across both types together (see TimelineExporter),
+     * so "front"/"back" here means the overall stacking order, not just
+     * within one overlay type.
+     */
+    fun bringOverlayToFront(overlayId: String, isImage: Boolean) {
+        applyUpdate { current ->
+            val maxZ = (current.textOverlays.map { it.zIndex } + current.imageOverlays.map { it.zIndex }).maxOrNull() ?: 0
+            val newZ = maxZ + 1
+            if (isImage) {
+                current.copy(imageOverlays = current.imageOverlays.map { if (it.id == overlayId) it.copy(zIndex = newZ) else it })
+            } else {
+                current.copy(textOverlays = current.textOverlays.map { if (it.id == overlayId) it.copy(zIndex = newZ) else it })
+            }
+        }
+    }
+
+    fun sendOverlayToBack(overlayId: String, isImage: Boolean) {
+        applyUpdate { current ->
+            val minZ = (current.textOverlays.map { it.zIndex } + current.imageOverlays.map { it.zIndex }).minOrNull() ?: 0
+            val newZ = minZ - 1
+            if (isImage) {
+                current.copy(imageOverlays = current.imageOverlays.map { if (it.id == overlayId) it.copy(zIndex = newZ) else it })
+            } else {
+                current.copy(textOverlays = current.textOverlays.map { if (it.id == overlayId) it.copy(zIndex = newZ) else it })
+            }
+        }
+    }
+
     /** Updates a text overlay/sticker's position and size after a drag/resize gesture on the preview. */
     fun updateTextOverlayTransform(overlayId: String, x: Float, y: Float, sizeSp: Float) {
         applyUpdate { current ->
