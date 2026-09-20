@@ -15,6 +15,7 @@ import com.example.videoeditor.model.TextOverlay
 import com.example.videoeditor.model.TransitionType
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.UUID
 
 /**
@@ -62,15 +63,26 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
     private val saveHandler = android.os.Handler(android.os.Looper.getMainLooper())
     private val saveRunnable = Runnable {
         val current = _project.value ?: return@Runnable
-        viewModelScope.launch(Dispatchers.IO) { repository.save(current) }
+        // Snapshot the deques onto the main thread before hopping to IO --
+        // ArrayDeque isn't thread-safe, and both stacks keep mutating from UI
+        // interactions while this coroutine runs.
+        val undoSnapshot = undoStack.toList()
+        val redoSnapshot = redoStack.toList()
+        viewModelScope.launch(Dispatchers.IO) { repository.save(current, undoSnapshot, redoSnapshot) }
     }
     private val saveDebounceMs = 800L
 
     init {
         viewModelScope.launch(Dispatchers.IO) {
-            val loaded = repository.loadMostRecent()
-            if (loaded != null) {
-                _project.postValue(loaded)
+            val loaded = repository.loadMostRecent() ?: return@launch
+            withContext(Dispatchers.Main) {
+                _project.value = loaded.project
+                // ArrayDeque isn't thread-safe, and updateHistoryFlags() uses
+                // LiveData.value= (main-thread only) -- both reasons this
+                // whole block runs on Main rather than staying on IO.
+                undoStack.addAll(loaded.undoHistory)
+                redoStack.addAll(loaded.redoHistory)
+                updateHistoryFlags()
             }
         }
     }
