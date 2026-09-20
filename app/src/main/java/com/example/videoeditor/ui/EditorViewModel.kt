@@ -340,28 +340,49 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
      * so "front"/"back" here means the overall stacking order, not just
      * within one overlay type.
      */
-    fun bringOverlayToFront(overlayId: String, isImage: Boolean) {
-        applyUpdate { current ->
-            val maxZ = (current.textOverlays.map { it.zIndex } + current.imageOverlays.map { it.zIndex }).maxOrNull() ?: 0
-            val newZ = maxZ + 1
-            if (isImage) {
-                current.copy(imageOverlays = current.imageOverlays.map { if (it.id == overlayId) it.copy(zIndex = newZ) else it })
-            } else {
-                current.copy(textOverlays = current.textOverlays.map { if (it.id == overlayId) it.copy(zIndex = newZ) else it })
-            }
-        }
-    }
+    /**
+     * Moves an overlay (text or image, by id) up or down by exactly ONE
+     * position in the combined text+image stacking order -- swapping with
+     * whichever overlay is its immediate neighbor there -- rather than
+     * jumping straight to the absolute front/back. Returns false (no-op) if
+     * the overlay is already at that end of the stack.
+     *
+     * Rather than swapping raw zIndex VALUES (which would silently do
+     * nothing if the two neighbors happen to share the same zIndex, e.g.
+     * both still at the default 0), every overlay is reassigned a fresh
+     * sequential zIndex reflecting its rank after the swap. This guarantees
+     * a visible move regardless of any pre-existing ties.
+     */
+    fun moveOverlayLayer(overlayId: String, isImage: Boolean, up: Boolean): Boolean {
+        val current = _project.value ?: return false
 
-    fun sendOverlayToBack(overlayId: String, isImage: Boolean) {
-        applyUpdate { current ->
-            val minZ = (current.textOverlays.map { it.zIndex } + current.imageOverlays.map { it.zIndex }).minOrNull() ?: 0
-            val newZ = minZ - 1
-            if (isImage) {
-                current.copy(imageOverlays = current.imageOverlays.map { if (it.id == overlayId) it.copy(zIndex = newZ) else it })
-            } else {
-                current.copy(textOverlays = current.textOverlays.map { if (it.id == overlayId) it.copy(zIndex = newZ) else it })
-            }
+        data class Entry(val id: String, val zIndex: Int)
+        val combined = mutableListOf<Entry>()
+        current.textOverlays.forEach { combined += Entry(it.id, it.zIndex) }
+        current.imageOverlays.forEach { combined += Entry(it.id, it.zIndex) }
+        // Stable sort, highest zIndex (frontmost) first -- matches TimelineView's row order.
+        val sorted = combined.sortedByDescending { it.zIndex }.toMutableList()
+
+        val index = sorted.indexOfFirst { it.id == overlayId }
+        if (index == -1) return false
+        val targetIndex = if (up) index - 1 else index + 1
+        if (targetIndex !in sorted.indices) return false // already at the front/back
+
+        val tmp = sorted[index]
+        sorted[index] = sorted[targetIndex]
+        sorted[targetIndex] = tmp
+
+        val n = sorted.size
+        val newZIndexById = HashMap<String, Int>()
+        sorted.forEachIndexed { i, entry -> newZIndexById[entry.id] = n - i } // index 0 (front) gets the highest value
+
+        applyUpdate { proj ->
+            proj.copy(
+                textOverlays = proj.textOverlays.map { it.copy(zIndex = newZIndexById[it.id] ?: it.zIndex) },
+                imageOverlays = proj.imageOverlays.map { it.copy(zIndex = newZIndexById[it.id] ?: it.zIndex) }
+            )
         }
+        return true
     }
 
     /** Updates a text overlay/sticker's position and size after a drag/resize gesture on the preview. */

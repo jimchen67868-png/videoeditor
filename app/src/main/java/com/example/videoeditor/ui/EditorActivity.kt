@@ -256,8 +256,8 @@ class EditorActivity : AppCompatActivity() {
 
         binding.undoButton.setOnClickListener { viewModel.undo() }
         binding.redoButton.setOnClickListener { viewModel.redo() }
-        binding.bringFrontButton.setOnClickListener { reorderSelectedOverlay(toFront = true) }
-        binding.sendBackButton.setOnClickListener { reorderSelectedOverlay(toFront = false) }
+        binding.bringFrontButton.setOnClickListener { reorderSelectedOverlay(up = true) }
+        binding.sendBackButton.setOnClickListener { reorderSelectedOverlay(up = false) }
 
         viewModel.canUndo.observe(this) { binding.undoButton.isEnabled = it; binding.undoButton.alpha = if (it) 1f else 0.4f }
         viewModel.canRedo.observe(this) { binding.redoButton.isEnabled = it; binding.redoButton.alpha = if (it) 1f else 0.4f }
@@ -1112,12 +1112,12 @@ class EditorActivity : AppCompatActivity() {
     }
 
     /**
-     * Applies Bring to Front / Send to Back to whichever overlay is
-     * currently selected -- text and image selection are mutually exclusive
-     * (see EditorViewModel.selectTextOverlay/selectImageOverlay), so at most
-     * one of these two ids is non-null at a time.
+     * Moves whichever overlay is currently selected up or down by one
+     * position in the stacking order -- text and image selection are
+     * mutually exclusive (see EditorViewModel.selectTextOverlay/
+     * selectImageOverlay), so at most one of these two ids is non-null.
      */
-    private fun reorderSelectedOverlay(toFront: Boolean) {
+    private fun reorderSelectedOverlay(up: Boolean) {
         val selectedTextId = viewModel.selectedOverlayId.value
         val selectedImageId = viewModel.selectedImageOverlayId.value
         val (overlayId, isImage) = when {
@@ -1128,13 +1128,14 @@ class EditorActivity : AppCompatActivity() {
                 return
             }
         }
-        if (toFront) {
-            viewModel.bringOverlayToFront(overlayId, isImage)
-            Toast.makeText(this, "Brought to front", Toast.LENGTH_SHORT).show()
-        } else {
-            viewModel.sendOverlayToBack(overlayId, isImage)
-            Toast.makeText(this, "Sent to back", Toast.LENGTH_SHORT).show()
+        val moved = viewModel.moveOverlayLayer(overlayId, isImage, up)
+        val message = when {
+            !moved && up -> "Already at the front"
+            !moved && !up -> "Already at the back"
+            up -> "Moved up one layer"
+            else -> "Moved down one layer"
         }
+        Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
     }
 
     private fun showEditImageOverlayDialog() {

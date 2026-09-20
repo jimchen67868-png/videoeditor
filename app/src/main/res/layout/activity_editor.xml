@@ -71,7 +71,17 @@
             android:id="@+id/previewPlayerView"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            app:use_controller="true" />
+            app:use_controller="true"
+            app:surface_type="texture_view" />
+        <!-- surface_type is texture_view (not the default surface_view) because
+             a SurfaceView's actual on-screen size/position is synced to the
+             rest of the UI asynchronously (it punches a hole in the window),
+             which visibly lags behind when the surrounding layout resizes,
+             e.g. right after the scrollable panel below changes height. That
+             lag is what makes the video appear to render at a stale, smaller
+             size floating inside the now-larger preview area. TextureView is
+             a normal View that participates in the regular draw/invalidate
+             pipeline, so it stays in sync with layout changes. -->
 
         <FrameLayout
             android:id="@+id/overlayProxyBox"
@@ -141,7 +151,7 @@
             android:id="@+id/sendBackButton"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="\u2193 Back"
+            android:text="\u2193 Layer"
             android:textColor="#666666"
             android:textSize="14sp"
             android:padding="10dp"
@@ -151,7 +161,7 @@
             android:id="@+id/bringFrontButton"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Front \u2191"
+            android:text="Layer \u2191"
             android:textColor="#666666"
             android:textSize="14sp"
             android:padding="10dp"
