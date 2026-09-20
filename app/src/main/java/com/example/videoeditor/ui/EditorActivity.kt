@@ -38,17 +38,15 @@ class EditorActivity : AppCompatActivity() {
     private lateinit var binding: ActivityEditorBinding
     private val viewModel: EditorViewModel by viewModels()
     private lateinit var player: ExoPlayer
-    // Music tracks were only ever wired into the EXPORT pipeline (TimelineExporter);
-    // the live preview player had no audio source for them at all, so music
-    // never played during preview -- only in the final exported file. This
-    // second player fixes that by playing the music in parallel, kept in sync
-    // with the main player's position and play/pause state (see syncMusicPlayer).
-    // NOTE: only the FIRST music track plays in live preview (a pragmatic
-    // scope limit -- mixing arbitrarily many simultaneous tracks live would
-    // need N synced players or a more advanced composition-preview API this
-    // environment can't verify). Export still correctly mixes ALL tracks.
-    private lateinit var musicPlayer: ExoPlayer
-    private var currentPreviewMusicTrackId: String? = null
+    // One ExoPlayer per music track, keyed by track id, so multiple
+    // simultaneous tracks all play together in the live preview -- kept in
+    // sync with the main player's position and play/pause state (see
+    // syncMusicPlayer). Export has always mixed ALL tracks correctly via
+    // Composition; this used to only preview the FIRST track (a documented,
+    // deliberate scope limit) since Media3 doesn't provide a ready-made
+    // "preview a Composition live" API, so N independent synced players is
+    // the pragmatic way to actually play them all back together here.
+    private val musicPlayers = mutableMapOf<String, ExoPlayer>()
 
     // Tracks (sourceUri, trimStart, trimEnd) per clip so the project observer
     // can tell "clip list actually changed" apart from "only a cosmetic field
@@ -136,13 +134,13 @@ class EditorActivity : AppCompatActivity() {
                 Toast.LENGTH_LONG
             ).show()
             viewModel.setExportProgress(-1)
-            // runExport() called player.stop()/musicPlayer.stop() to free the
+            // runExport() called player.stop()/musicPlayers[...].stop() to free the
             // decoder for the export service's own codec use. Re-prepare now
             // that export is done so the preview works again; playWhenReady
             // is already false from the pause() call before stop(), so this
             // won't auto-resume playback.
             player.prepare()
-            musicPlayer.prepare()
+            musicPlayers.values.forEach { it.prepare() }
         }
     }
 
@@ -156,7 +154,6 @@ class EditorActivity : AppCompatActivity() {
         }
 
         player = ExoPlayer.Builder(this).build()
-        musicPlayer = ExoPlayer.Builder(this).build()
         binding.previewPlayerView.player = player
         player.addListener(object : androidx.media3.common.Player.Listener {
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
@@ -401,7 +398,7 @@ class EditorActivity : AppCompatActivity() {
     override fun onStop() {
         super.onStop()
         player.pause()
-        musicPlayer.pause()
+        musicPlayers.values.forEach { it.pause() }
         positionHandler.removeCallbacks(positionUpdater)
         runCatching { unregisterReceiver(exportResultReceiver) }
     }
@@ -419,47 +416,51 @@ class EditorActivity : AppCompatActivity() {
      * complexity to fix until live-preview effects are wired up properly.
      */
     /**
-     * Keeps the dedicated music player in sync with the main player: loads
-     * the first music track (if any), seeks it to match the main player's
-     * position relative to that track's timeline placement, and mirrors
-     * play/pause -- all on a ~200ms poll rather than trying to intercept
-     * every single seek/play/pause call site, which is imperceptible for a
-     * live preview (export remains frame/sample-accurate via Transformer).
+     * Keeps every music track's dedicated player in sync with the main
+     * player: creates one ExoPlayer per track (reused across calls, keyed by
+     * track id), seeks each to match the main player's position relative to
+     * that track's timeline placement, and mirrors play/pause -- all on a
+     * ~200ms poll rather than trying to intercept every single seek/play/
+     * pause call site, which is imperceptible for a live preview (export
+     * remains frame/sample-accurate via Transformer). Players for tracks
+     * that no longer exist in the project (removed music) are released and
+     * dropped from the pool.
      */
     private fun syncMusicPlayer(project: com.example.videoeditor.model.Project, globalPositionMs: Long) {
-        val track = project.audioTracks.firstOrNull()
-        if (track == null) {
-            if (musicPlayer.isPlaying) musicPlayer.pause()
-            currentPreviewMusicTrackId = null
-            return
-        }
+        val tracks = project.audioTracks
+        val currentIds = tracks.map { it.id }.toSet()
 
-        if (track.id != currentPreviewMusicTrackId) {
-            currentPreviewMusicTrackId = track.id
-            musicPlayer.stop()
-            musicPlayer.clearMediaItems()
-            musicPlayer.setMediaItem(MediaItem.fromUri(track.sourceUri))
-            musicPlayer.prepare()
-        }
-
-        val trackEndMs = track.timelineStartMs + track.durationMs
-        val isActive = globalPositionMs in track.timelineStartMs until trackEndMs
-        if (!isActive) {
-            if (musicPlayer.isPlaying) musicPlayer.pause()
-            return
-        }
-
-        val desiredSourcePositionMs = track.sourceStartMs + (globalPositionMs - track.timelineStartMs)
-        // Only correct drift beyond ~300ms rather than seeking every single
-        // poll tick, which would otherwise cause constant audio stutter.
-        if (kotlin.math.abs(desiredSourcePositionMs - musicPlayer.currentPosition) > 300) {
-            musicPlayer.seekTo(desiredSourcePositionMs)
-        }
-        musicPlayer.volume = track.volume
+        val removedIds = musicPlayers.keys - currentIds
+        removedIds.forEach { id -> musicPlayers.remove(id)?.release() }
 
         val mainIsPlaying = player.isPlaying
-        if (mainIsPlaying && !musicPlayer.isPlaying) musicPlayer.play()
-        if (!mainIsPlaying && musicPlayer.isPlaying) musicPlayer.pause()
+
+        for (track in tracks) {
+            val trackPlayer = musicPlayers.getOrPut(track.id) {
+                ExoPlayer.Builder(this).build().apply {
+                    setMediaItem(MediaItem.fromUri(track.sourceUri))
+                    prepare()
+                }
+            }
+
+            val trackEndMs = track.timelineStartMs + track.durationMs
+            val isActive = globalPositionMs in track.timelineStartMs until trackEndMs
+            if (!isActive) {
+                if (trackPlayer.isPlaying) trackPlayer.pause()
+                continue
+            }
+
+            val desiredSourcePositionMs = track.sourceStartMs + (globalPositionMs - track.timelineStartMs)
+            // Only correct drift beyond ~300ms rather than seeking every single
+            // poll tick, which would otherwise cause constant audio stutter.
+            if (kotlin.math.abs(desiredSourcePositionMs - trackPlayer.currentPosition) > 300) {
+                trackPlayer.seekTo(desiredSourcePositionMs)
+            }
+            trackPlayer.volume = track.volume
+
+            if (mainIsPlaying && !trackPlayer.isPlaying) trackPlayer.play()
+            if (!mainIsPlaying && trackPlayer.isPlaying) trackPlayer.pause()
+        }
     }
 
     private fun updatePlayheadAndTimeLabel() {
@@ -1491,8 +1492,7 @@ class EditorActivity : AppCompatActivity() {
         // can resume normally once export finishes (see exportResultReceiver).
         player.pause()
         player.stop()
-        musicPlayer.pause()
-        musicPlayer.stop()
+        musicPlayers.values.forEach { it.pause(); it.stop() }
 
         val tempOutputFile = File(cacheDir, "export_temp_${System.currentTimeMillis()}.mp4")
         ExportRequestHolder.pendingProject = project
@@ -1510,7 +1510,7 @@ class EditorActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         player.release()
-        musicPlayer.release()
+        musicPlayers.values.forEach { it.release() }
         super.onDestroy()
     }
 }
