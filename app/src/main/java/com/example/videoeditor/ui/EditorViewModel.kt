@@ -181,6 +181,13 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
     fun selectTextOverlay(overlayId: String?) {
         // Selection is UI state, not an edit -- doesn't go through undo history.
         _selectedOverlayId.value = overlayId
+        // Selecting a text overlay must supersede any previously-selected
+        // image overlay -- otherwise a stale selectedImageOverlayId from
+        // earlier in the session keeps winning in syncOverlayProxy's
+        // priority check even though the user just tapped text.
+        if (overlayId != null) {
+            _selectedImageOverlayId.value = null
+        }
     }
 
     fun selectAudioTrack(trackId: String?) {
@@ -189,6 +196,11 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
 
     fun selectImageOverlay(overlayId: String?) {
         _selectedImageOverlayId.value = overlayId
+        // Mirror of the above: selecting an image overlay supersedes any
+        // previously-selected text overlay.
+        if (overlayId != null) {
+            _selectedOverlayId.value = null
+        }
     }
 
     /** Live (no-undo-history) update for dragging a music track's trim handle; pair with beginBatchEdit/endBatchEdit. */
