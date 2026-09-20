@@ -753,22 +753,29 @@ class EditorActivity : AppCompatActivity() {
             val clipLocalImageOverlays = com.example.videoeditor.effects.ImageOverlayEffectFactory.overlaysForWindow(
                 project.imageOverlays, clipGlobalStartMs, clip.timelineDurationMs
             )
-            // DISABLED for live preview specifically. A diagnostic test
-            // confirmed overlay rendering was the actual cause of repeated
-            // playback-breaking crashes (video freezing/black screen after
-            // adding text). Export (Media3 Transformer, a separate and more
-            // mature pipeline) has overlay rendering RE-ENABLED -- see
-            // TimelineExporter -- since it was never directly implicated in
-            // any of the crashes, only this live preview (ExoPlayer's
-            // video-effects pipeline) was. Practical result: text/stickers/
-            // images won't show while editing, but WILL appear correctly in
-            // the exported video. Overlay data (position, timing, content)
-            // remains fully editable either way.
-            // if (clipLocalOverlays.isNotEmpty()) {
-            //     com.example.videoeditor.effects.TextOverlayEffectFactory.build(clipLocalOverlays.takeLast(1)).forEach { effects += it }
-            // } else if (clipLocalImageOverlays.isNotEmpty()) {
-            //     com.example.videoeditor.effects.ImageOverlayEffectFactory.build(this, clipLocalImageOverlays.takeLast(1)).forEach { effects += it }
-            // }
+            // RE-ENABLED per explicit user request (previously disabled -- see
+            // history below). Kept at the SAME conservative scope as the
+            // original attempt (a single overlay at a time, text preferred
+            // over image) rather than extending to multiple simultaneous
+            // overlays, since that combination was never actually tested live
+            // before this was disabled.
+            //
+            // CRASH HISTORY: a diagnostic test previously confirmed overlay
+            // rendering was the actual cause of repeated playback-breaking
+            // crashes (video freezing/black screen after adding text) via
+            // ExoPlayer's live video-effects pipeline specifically -- export
+            // (Media3 Transformer, a separate pipeline) was never implicated
+            // and has always rendered overlays correctly. The try/catch below
+            // only guards JVM exceptions; if the underlying issue is a native
+            // GL-level freeze rather than a catchable exception, this
+            // wouldn't protect against it. Test cautiously (text alone, then
+            // image alone, then both) and revert this block immediately if
+            // freezing/black-screen recurs.
+            if (clipLocalOverlays.isNotEmpty()) {
+                com.example.videoeditor.effects.TextOverlayEffectFactory.build(clipLocalOverlays.takeLast(1)).forEach { (_, effect) -> effects += effect }
+            } else if (clipLocalImageOverlays.isNotEmpty()) {
+                com.example.videoeditor.effects.ImageOverlayEffectFactory.build(this, clipLocalImageOverlays.takeLast(1)).forEach { (_, effect) -> effects += effect }
+            }
 
             // Same fade logic as TimelineExporter, so preview matches export.
             val previousClip = project.clips.getOrNull(index - 1)
