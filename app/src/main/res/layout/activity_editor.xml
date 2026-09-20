@@ -137,6 +137,26 @@
             android:padding="10dp"
             android:layout_marginStart="24dp" />
 
+        <TextView
+            android:id="@+id/sendBackButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="\u2193 Back"
+            android:textColor="#666666"
+            android:textSize="14sp"
+            android:padding="10dp"
+            android:layout_marginStart="24dp" />
+
+        <TextView
+            android:id="@+id/bringFrontButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Front \u2191"
+            android:textColor="#666666"
+            android:textSize="14sp"
+            android:padding="10dp"
+            android:layout_marginStart="24dp" />
+
     </LinearLayout>
 
     <TextView

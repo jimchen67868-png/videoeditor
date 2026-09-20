@@ -256,6 +256,8 @@ class EditorActivity : AppCompatActivity() {
 
         binding.undoButton.setOnClickListener { viewModel.undo() }
         binding.redoButton.setOnClickListener { viewModel.redo() }
+        binding.bringFrontButton.setOnClickListener { reorderSelectedOverlay(toFront = true) }
+        binding.sendBackButton.setOnClickListener { reorderSelectedOverlay(toFront = false) }
 
         viewModel.canUndo.observe(this) { binding.undoButton.isEnabled = it; binding.undoButton.alpha = if (it) 1f else 0.4f }
         viewModel.canRedo.observe(this) { binding.redoButton.isEnabled = it; binding.redoButton.alpha = if (it) 1f else 0.4f }
@@ -1109,6 +1111,32 @@ class EditorActivity : AppCompatActivity() {
             .show()
     }
 
+    /**
+     * Applies Bring to Front / Send to Back to whichever overlay is
+     * currently selected -- text and image selection are mutually exclusive
+     * (see EditorViewModel.selectTextOverlay/selectImageOverlay), so at most
+     * one of these two ids is non-null at a time.
+     */
+    private fun reorderSelectedOverlay(toFront: Boolean) {
+        val selectedTextId = viewModel.selectedOverlayId.value
+        val selectedImageId = viewModel.selectedImageOverlayId.value
+        val (overlayId, isImage) = when {
+            selectedTextId != null -> selectedTextId to false
+            selectedImageId != null -> selectedImageId to true
+            else -> {
+                Toast.makeText(this, "Select a text or image overlay on the timeline first", Toast.LENGTH_SHORT).show()
+                return
+            }
+        }
+        if (toFront) {
+            viewModel.bringOverlayToFront(overlayId, isImage)
+            Toast.makeText(this, "Brought to front", Toast.LENGTH_SHORT).show()
+        } else {
+            viewModel.sendOverlayToBack(overlayId, isImage)
+            Toast.makeText(this, "Sent to back", Toast.LENGTH_SHORT).show()
+        }
+    }
+
     private fun showEditImageOverlayDialog() {
         val project = viewModel.project.value
         val selectedId = viewModel.selectedImageOverlayId.value
@@ -1118,58 +1146,22 @@ class EditorActivity : AppCompatActivity() {
             return
         }
 
-        val container = android.widget.LinearLayout(this).apply {
-            orientation = android.widget.LinearLayout.VERTICAL
-            setPadding(48, 24, 48, 24)
-        }
         val input = android.widget.EditText(this).apply {
             hint = "Opacity % (0-100)"
             inputType = android.text.InputType.TYPE_CLASS_NUMBER
             setText((overlay.opacity * 100).toInt().toString())
         }
-        container.addView(input)
 
-        val layerRow = android.widget.LinearLayout(this).apply {
-            orientation = android.widget.LinearLayout.HORIZONTAL
-            layoutParams = android.widget.LinearLayout.LayoutParams(
-                android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
-                android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { topMargin = 24 }
-        }
-        val bringToFrontButton = android.widget.Button(this).apply {
-            text = "Bring to Front"
-            layoutParams = android.widget.LinearLayout.LayoutParams(0, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-        }
-        val sendToBackButton = android.widget.Button(this).apply {
-            text = "Send to Back"
-            layoutParams = android.widget.LinearLayout.LayoutParams(0, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { marginStart = 8 }
-        }
-        layerRow.addView(bringToFrontButton)
-        layerRow.addView(sendToBackButton)
-        container.addView(layerRow)
-
-        val dialog = android.app.AlertDialog.Builder(this)
-            .setTitle("Edit image overlay")
-            .setView(container)
+        android.app.AlertDialog.Builder(this)
+            .setTitle("Edit image overlay opacity")
+            .setView(input)
             .setPositiveButton("Save") { _, _ ->
                 val percent = input.text.toString().toFloatOrNull() ?: (overlay.opacity * 100)
                 viewModel.updateImageOverlayOpacity(overlay.id, (percent / 100f).coerceIn(0f, 1f))
                 Toast.makeText(this, "Opacity updated", Toast.LENGTH_SHORT).show()
             }
             .setNegativeButton("Cancel", null)
-            .create()
-
-        bringToFrontButton.setOnClickListener {
-            viewModel.bringOverlayToFront(overlay.id, isImage = true)
-            Toast.makeText(this, "Brought to front", Toast.LENGTH_SHORT).show()
-            dialog.dismiss()
-        }
-        sendToBackButton.setOnClickListener {
-            viewModel.sendOverlayToBack(overlay.id, isImage = true)
-            Toast.makeText(this, "Sent to back", Toast.LENGTH_SHORT).show()
-            dialog.dismiss()
-        }
-        dialog.show()
+            .show()
     }
 
     private fun showMusicPlacementDialog(uri: Uri) {
@@ -1348,36 +1340,7 @@ class EditorActivity : AppCompatActivity() {
             }
         }
 
-        // Layer reordering only makes sense for an overlay that already
-        // exists among others -- a brand-new one has nothing to reorder yet.
-        var bringToFrontButton: android.widget.Button? = null
-        var sendToBackButton: android.widget.Button? = null
-        if (isEditing) {
-            val innerContainer = (dialogView as? android.widget.ScrollView)?.getChildAt(0) as? android.widget.LinearLayout
-            val layerLabel = android.widget.TextView(this).apply {
-                text = "Layer order"
-                setPadding(0, 32, 0, 4)
-            }
-            val layerRow = android.widget.LinearLayout(this).apply {
-                orientation = android.widget.LinearLayout.HORIZONTAL
-            }
-            val front = android.widget.Button(this).apply {
-                text = "Bring to Front"
-                layoutParams = android.widget.LinearLayout.LayoutParams(0, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-            }
-            val back = android.widget.Button(this).apply {
-                text = "Send to Back"
-                layoutParams = android.widget.LinearLayout.LayoutParams(0, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { marginStart = 8 }
-            }
-            layerRow.addView(front)
-            layerRow.addView(back)
-            innerContainer?.addView(layerLabel)
-            innerContainer?.addView(layerRow)
-            bringToFrontButton = front
-            sendToBackButton = back
-        }
-
-        val dialog = android.app.AlertDialog.Builder(this)
+        android.app.AlertDialog.Builder(this)
             .setTitle(if (isEditing) "Edit text overlay" else "Add text overlay")
             .setView(dialogView)
             .setPositiveButton(if (isEditing) "Save" else "Add") { _, _ ->
@@ -1411,21 +1374,7 @@ class EditorActivity : AppCompatActivity() {
                 }
             }
             .setNegativeButton("Cancel", null)
-            .create()
-
-        if (isEditing) {
-            bringToFrontButton?.setOnClickListener {
-                viewModel.bringOverlayToFront(existingOverlay!!.id, isImage = false)
-                Toast.makeText(this, "Brought to front", Toast.LENGTH_SHORT).show()
-                dialog.dismiss()
-            }
-            sendToBackButton?.setOnClickListener {
-                viewModel.sendOverlayToBack(existingOverlay!!.id, isImage = false)
-                Toast.makeText(this, "Sent to back", Toast.LENGTH_SHORT).show()
-                dialog.dismiss()
-            }
-        }
-        dialog.show()
+            .show()
     }
 
     private fun removeLastTextOverlay() {
