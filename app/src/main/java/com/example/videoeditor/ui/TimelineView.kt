@@ -79,12 +79,27 @@ class TimelineView @JvmOverloads constructor(
     private var selectedItemId: String? = null // selection is shared across text/music/image since IDs are UUIDs (never collide)
     private var pxPerMs: Float = 0.05f // zoom level; adjust for desired timeline density
 
-    /** All lane items in draw/hit-test order: text overlays, then music tracks, then image overlays. */
+    /**
+     * All lane items in draw/hit-test order. Text and image overlays are
+     * sorted together by zIndex, HIGHEST first, so the row order visually
+     * matches the actual stacking order used at export time -- pressing
+     * Bring to Front/Send to Back moves that overlay's row to the top/
+     * bottom of the overlay group instead of the timeline staying frozen
+     * in a fixed text-then-image layout regardless of the real order.
+     * Music has no zIndex (it isn't part of visual stacking) and always
+     * comes after the overlay rows, unaffected by reordering.
+     * sortedByDescending is a STABLE sort, so two overlays that are still
+     * both at the default zIndex 0 keep their original relative order
+     * (text before image, matching the layout before this existed).
+     */
     private fun buildTrackItems(): List<TrackItem> {
+        val overlayItems = mutableListOf<Pair<Int, TrackItem>>()
+        textOverlays.forEach { overlayItems += it.zIndex to TrackItem(it.id, it.startMs, it.endMs, it.text, TrackKind.TEXT) }
+        imageOverlays.forEach { overlayItems += it.zIndex to TrackItem(it.id, it.startMs, it.endMs, "\uD83D\uDDBC Image", TrackKind.IMAGE) }
+
         val items = mutableListOf<TrackItem>()
-        textOverlays.forEach { items += TrackItem(it.id, it.startMs, it.endMs, it.text, TrackKind.TEXT) }
+        overlayItems.sortedByDescending { (zIndex, _) -> zIndex }.forEach { (_, item) -> items += item }
         audioTracks.forEach { items += TrackItem(it.id, it.timelineStartMs, it.timelineStartMs + it.durationMs, "\u266A Music", TrackKind.MUSIC) }
-        imageOverlays.forEach { items += TrackItem(it.id, it.startMs, it.endMs, "\uD83D\uDDBC Image", TrackKind.IMAGE) }
         return items
     }
 
