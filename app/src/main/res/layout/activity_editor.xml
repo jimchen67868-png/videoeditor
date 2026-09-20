@@ -65,7 +65,7 @@
     <FrameLayout
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_weight="1">
+        android:layout_weight="3">
 
         <androidx.media3.ui.PlayerView
             android:id="@+id/previewPlayerView"
@@ -155,6 +155,29 @@
         android:layout_width="match_parent"
         android:layout_height="6dp"
         android:visibility="gone" />
+
+    <!-- Timeline, music/text rows, and the contextual tool panel all share a
+         bounded, scrollable region instead of each being wrap_content
+         directly in the root column. Previously every one of these was a
+         plain wrap_content sibling of the preview, with the preview as the
+         ONLY flexible (weight) element, so whenever a tool panel below
+         needed more room (e.g. the image-overlay panel's paragraph + three
+         full-width buttons), that extra height came directly out of the
+         preview, which could shrink it down to a sliver. Now this whole
+         block gets a fixed proportion of the remaining screen (see the
+         weight below, paired with the preview's weight="3" above) and
+         anything that doesn't fit simply scrolls internally, so the preview
+         size no longer depends on which tool panel happens to be open. -->
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="2"
+        android:fillViewport="false">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
 
     <!-- Timeline: video/text/music rows (drawn internally by TimelineView) -->
     <HorizontalScrollView
@@ -483,6 +506,10 @@
         </LinearLayout>
 
     </LinearLayout>
+
+    </LinearLayout>
+
+    </ScrollView>
 
     <!-- Bottom icon toolbar, CapCut-style -->
     <HorizontalScrollView
