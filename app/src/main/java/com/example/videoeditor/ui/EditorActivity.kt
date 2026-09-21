@@ -1434,6 +1434,16 @@ class EditorActivity : AppCompatActivity() {
      * pass has fully settled, rather than using stale bounds mid-pass.
      */
     private fun resyncPreviewSurface() {
+        // The INVISIBLE/VISIBLE toggle alone was confirmed insufficient:
+        // preview still rendered small after adding a text overlay, and
+        // only fixed itself when something UNRELATED forced a full window
+        // recomposite (e.g. the system taking a screenshot). That's a
+        // strong signal the surrounding layout's SIZE computation itself
+        // was stale, not just the SurfaceView's on-screen position --
+        // toggling visibility changes whether a View draws, but doesn't by
+        // itself force Android to re-run measure/layout. requestLayout()
+        // does that explicitly, so it's run first, before the toggle.
+        binding.root.requestLayout()
         binding.previewPlayerView.post {
             binding.previewPlayerView.visibility = android.view.View.INVISIBLE
             binding.previewPlayerView.post {
