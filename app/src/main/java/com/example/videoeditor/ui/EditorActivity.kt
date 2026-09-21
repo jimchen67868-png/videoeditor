@@ -364,6 +364,7 @@ class EditorActivity : AppCompatActivity() {
             // it's recurred, reliability wins over avoiding the stutter: every
             // edit now goes through the same well-tested full-rebuild path.
             rebuildPreviewPlaylist(project)
+            resyncPreviewSurface()
 
             val tracks = project.audioTracks
             binding.musicTrackLabel.text = when {
@@ -1390,6 +1391,32 @@ class EditorActivity : AppCompatActivity() {
         viewModel.removeTextOverlay(target.id)
         if (selectedId == target.id) viewModel.selectTextOverlay(null)
         Toast.makeText(this, "Text removed", Toast.LENGTH_SHORT).show()
+    }
+
+    /**
+     * Works around SurfaceView's async size/position sync (see the
+     * surface_type comment on previewPlayerView in activity_editor.xml):
+     * any layout pass anywhere in the view hierarchy -- not just ones that
+     * change the preview's OWN allocated size -- can leave the underlying
+     * Surface's actual on-screen hole-punch stale relative to the View's
+     * current bounds, e.g. after the timeline grows an extra lane from
+     * adding a text overlay, even though the preview's own weighted region
+     * doesn't change size. A brief INVISIBLE -> VISIBLE toggle (not GONE,
+     * which would itself trigger another layout pass) forces Android to
+     * reattach the Surface using the View's current post-layout bounds,
+     * without needing TextureView -- which fixed this same lag previously
+     * but introduced a separate vertical-stretch bug, likely from the extra
+     * composited layer interacting with the live Effects pipeline. Two
+     * nested posts so this runs only after the current layout/measure/draw
+     * pass has fully settled, rather than using stale bounds mid-pass.
+     */
+    private fun resyncPreviewSurface() {
+        binding.previewPlayerView.post {
+            binding.previewPlayerView.visibility = android.view.View.INVISIBLE
+            binding.previewPlayerView.post {
+                binding.previewPlayerView.visibility = android.view.View.VISIBLE
+            }
+        }
     }
 
     private fun rebuildPreviewPlaylist(project: com.example.videoeditor.model.Project) {
