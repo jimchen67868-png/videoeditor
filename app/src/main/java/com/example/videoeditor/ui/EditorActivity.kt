@@ -754,22 +754,22 @@ class EditorActivity : AppCompatActivity() {
             val clipLocalImageOverlays = com.example.videoeditor.effects.ImageOverlayEffectFactory.overlaysForWindow(
                 project.imageOverlays, clipGlobalStartMs, clip.timelineDurationMs
             )
-            // DISABLED for live preview specifically. A diagnostic test
-            // confirmed overlay rendering was the actual cause of repeated
-            // playback-breaking crashes (video freezing/black screen after
-            // adding text). Export (Media3 Transformer, a separate and more
-            // mature pipeline) has overlay rendering RE-ENABLED -- see
-            // TimelineExporter -- since it was never directly implicated in
-            // any of the crashes, only this live preview (ExoPlayer's
-            // video-effects pipeline) was. Practical result: text/stickers/
-            // images won't show while editing, but WILL appear correctly in
-            // the exported video. Overlay data (position, timing, content)
-            // remains fully editable either way.
-            // if (clipLocalOverlays.isNotEmpty()) {
-            //     com.example.videoeditor.effects.TextOverlayEffectFactory.build(clipLocalOverlays.takeLast(1)).forEach { effects += it }
-            // } else if (clipLocalImageOverlays.isNotEmpty()) {
-            //     com.example.videoeditor.effects.ImageOverlayEffectFactory.build(this, clipLocalImageOverlays.takeLast(1)).forEach { effects += it }
-            // }
+            // RE-ENABLED again per explicit, repeated user request. Same code
+            // and same conservative scope (one overlay at a time, text
+            // preferred over image) as the two previous attempts, BOTH of
+            // which crashed the same way (freeze/black screen after resize or
+            // drag). No new fix for the underlying instability has been
+            // found -- that would need an actual crash log (adb logcat) to
+            // diagnose, which hasn't been captured yet. If this crashes
+            // again, please capture logcat AT THE MOMENT of the freeze this
+            // time (see the instructions already given) rather than just
+            // reverting again, so this can finally be root-caused instead of
+            // guessed at a fourth time.
+            if (clipLocalOverlays.isNotEmpty()) {
+                com.example.videoeditor.effects.TextOverlayEffectFactory.build(clipLocalOverlays.takeLast(1)).forEach { (_, effect) -> effects += effect }
+            } else if (clipLocalImageOverlays.isNotEmpty()) {
+                com.example.videoeditor.effects.ImageOverlayEffectFactory.build(this, clipLocalImageOverlays.takeLast(1)).forEach { (_, effect) -> effects += effect }
+            }
 
             // Same fade logic as TimelineExporter, so preview matches export.
             val previousClip = project.clips.getOrNull(index - 1)
