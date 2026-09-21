@@ -71,17 +71,21 @@
             android:id="@+id/previewPlayerView"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            app:use_controller="true"
-            app:surface_type="texture_view" />
-        <!-- surface_type is texture_view (not the default surface_view) because
-             a SurfaceView's actual on-screen size/position is synced to the
-             rest of the UI asynchronously (it punches a hole in the window),
-             which visibly lags behind when the surrounding layout resizes,
-             e.g. right after the scrollable panel below changes height. That
-             lag is what makes the video appear to render at a stale, smaller
-             size floating inside the now-larger preview area. TextureView is
-             a normal View that participates in the regular draw/invalidate
-             pipeline, so it stays in sync with layout changes. -->
+            app:use_controller="true" />
+        <!-- surface_type was briefly changed to texture_view to fix the video
+             rendering too small after a surrounding layout resize (SurfaceView's
+             on-screen size/position sync lagging behind layout changes). Reverted
+             back to the default (surface_view) after a vertical-stretch distortion
+             appeared ("people look taller"): texture_view is the most recent,
+             still-active change that could plausibly explain a NEW distortion
+             class like this, especially combined with the experimental live
+             Effects pipeline (player.setVideoEffects()) used for filters/
+             transitions preview elsewhere in this Activity; that combination is
+             less proven than plain surface_view + Effects. Correct, undistorted
+             aspect ratio was confirmed throughout this entire project before this
+             attribute was ever introduced, so reverting is the lower-risk move.
+             If the "renders small after layout resize" bug recurs, that needs a
+             different fix than texture_view, not this same swap again. -->
 
         <FrameLayout
             android:id="@+id/overlayProxyBox"
