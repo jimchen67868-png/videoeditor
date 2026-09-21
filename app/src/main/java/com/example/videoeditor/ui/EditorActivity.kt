@@ -54,6 +54,26 @@ class EditorActivity : AppCompatActivity() {
     // the full rebuild.
     private var lastRebuiltProject: com.example.videoeditor.model.Project? = null
     private var lastKnownPlayheadMs: Long = 0L
+    private val liveEffectsDebounceHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private var pendingLiveEffectsRunnable: Runnable? = null
+
+    /**
+     * Debounces applyLiveEffectsForCurrentItem() so a rapid burst of
+     * overlay-only project updates (e.g. every ACTION_MOVE frame of a
+     * timeline drag) results in ONE player.setVideoEffects() call after
+     * things settle, not one per frame. Each call cancels any not-yet-run
+     * pending refresh and reschedules, so only the LAST update in a burst
+     * actually triggers a refresh.
+     */
+    private fun scheduleLiveEffectsRefresh() {
+        pendingLiveEffectsRunnable?.let { liveEffectsDebounceHandler.removeCallbacks(it) }
+        val runnable = Runnable {
+            applyLiveEffectsForCurrentItem()
+            resyncPreviewSurface()
+        }
+        pendingLiveEffectsRunnable = runnable
+        liveEffectsDebounceHandler.postDelayed(runnable, 150L)
+    }
 
     // --- Drag-to-reposition / resize proxy for whichever text overlay/sticker
     // or image overlay is active at the current playhead (see setupOverlayProxyDragAndResize) ---
@@ -382,12 +402,23 @@ class EditorActivity : AppCompatActivity() {
                 project.copy(textOverlays = emptyList(), imageOverlays = emptyList())
 
             if (overlayOnlyChange) {
-                applyLiveEffectsForCurrentItem()
+                // Debounced, NOT called immediately: dragging a text/image
+                // overlay clip on the TIMELINE (as opposed to dragging it in
+                // the preview box, which only commits on release) fires
+                // onTextOverlayTrimmed/onImageOverlayTrimmed on every single
+                // ACTION_MOVE frame -- trimTextOverlayLive/
+                // trimImageOverlayLive update _project.value on every one of
+                // those, which would otherwise call the experimental
+                // player.setVideoEffects() dozens of times per second during
+                // a drag. That high-frequency call pattern is the most
+                // concrete, evidence-backed explanation found so far for
+                // playback breaking after a timeline drag specifically.
+                scheduleLiveEffectsRefresh()
             } else {
                 rebuildPreviewPlaylist(project)
+                resyncPreviewSurface()
             }
             lastRebuiltProject = project
-            resyncPreviewSurface()
 
             val tracks = project.audioTracks
             binding.musicTrackLabel.text = when {
@@ -1434,16 +1465,14 @@ class EditorActivity : AppCompatActivity() {
      * pass has fully settled, rather than using stale bounds mid-pass.
      */
     private fun resyncPreviewSurface() {
-        // The INVISIBLE/VISIBLE toggle alone was confirmed insufficient:
-        // preview still rendered small after adding a text overlay, and
-        // only fixed itself when something UNRELATED forced a full window
-        // recomposite (e.g. the system taking a screenshot). That's a
-        // strong signal the surrounding layout's SIZE computation itself
-        // was stale, not just the SurfaceView's on-screen position --
-        // toggling visibility changes whether a View draws, but doesn't by
-        // itself force Android to re-run measure/layout. requestLayout()
-        // does that explicitly, so it's run first, before the toggle.
-        binding.root.requestLayout()
+        // NOTE: previously also called binding.root.requestLayout() here to
+        // try to fix a stale-size issue, but that caused a worse regression
+        // -- the preview rendering entirely off-screen above the visible
+        // area, most likely from interacting badly with the weighted
+        // preview-vs-scrollable-region layout split elsewhere in this
+        // Activity's layout. Reverted; back to the visibility-toggle-only
+        // version. The original small-preview-after-adding-overlay issue
+        // this was trying to more fully fix is still open.
         binding.previewPlayerView.post {
             binding.previewPlayerView.visibility = android.view.View.INVISIBLE
             binding.previewPlayerView.post {
@@ -1569,6 +1598,7 @@ class EditorActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        pendingLiveEffectsRunnable?.let { liveEffectsDebounceHandler.removeCallbacks(it) }
         player.release()
         musicPlayers.values.forEach { it.release() }
         super.onDestroy()
