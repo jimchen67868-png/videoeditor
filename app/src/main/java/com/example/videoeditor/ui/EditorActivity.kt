@@ -48,9 +48,11 @@ class EditorActivity : AppCompatActivity() {
     // the pragmatic way to actually play them all back together here.
     private val musicPlayers = mutableMapOf<String, ExoPlayer>()
 
-    // Tracks (sourceUri, trimStart, trimEnd) per clip so the project observer
-    // can tell "clip list actually changed" apart from "only a cosmetic field
-    // like filter/text/transition changed" -- see the observer below.
+    // Last project state a full player rebuild was done for -- lets the
+    // observer detect "only overlay content changed" (see below) apart from
+    // "clips/audio/filters/effects/transitions changed," which still need
+    // the full rebuild.
+    private var lastRebuiltProject: com.example.videoeditor.model.Project? = null
     private var lastKnownPlayheadMs: Long = 0L
 
     // --- Drag-to-reposition / resize proxy for whichever text overlay/sticker
@@ -354,16 +356,37 @@ class EditorActivity : AppCompatActivity() {
             binding.timelineView.setTextOverlays(project.textOverlays)
             binding.timelineView.setImageOverlays(project.imageOverlays)
 
-            // Always do the full rebuild (stop/clear/re-add/set-effects-before-
-            // prepare/prepare/seek-back/resume) for EVERY project change, not
-            // just structural ones. There used to be a "lightweight" path here
-            // that only refreshed the effects chain on an already-stable player
-            // for cosmetic-only changes (filter/text/overlay edits) to avoid a
-            // brief re-buffer stutter -- but that path caused playback to break
-            // more than once (most recently: after resizing an overlay). Given
-            // it's recurred, reliability wins over avoiding the stutter: every
-            // edit now goes through the same well-tested full-rebuild path.
-            rebuildPreviewPlaylist(project)
+            // Skip the expensive full rebuild for overlay-only changes
+            // (position/size/selection edits to text or image overlays),
+            // since logcat evidence showed that rebuild involves a real,
+            // measurable stall -- full MediaCodec decoder release +
+            // reinitialization, over a second in testing -- long enough to
+            // look like a freeze. A previous "lightweight" version of this
+            // exact optimization was removed after apparently causing
+            // playback to break; that decision may have been based on this
+            // same kind of stall being mistaken for a crash (no crash/ANR
+            // ever showed up in logcat here), but that can't be confirmed
+            // without logs from the original incident, so treat this as
+            // needing real on-device testing, not a guaranteed fix.
+            //
+            // "Overlay-only" is determined structurally: strip both overlay
+            // lists from both the previous and current project and compare
+            // everything else (clips, audio, filters, effects, transitions)
+            // for equality. If that's unchanged, only overlay content
+            // differs, and applyLiveEffectsForCurrentItem() alone is enough
+            // -- it just calls player.setVideoEffects() without touching
+            // MediaItems or the underlying decoders at all.
+            val previous = lastRebuiltProject
+            val overlayOnlyChange = previous != null &&
+                previous.copy(textOverlays = emptyList(), imageOverlays = emptyList()) ==
+                project.copy(textOverlays = emptyList(), imageOverlays = emptyList())
+
+            if (overlayOnlyChange) {
+                applyLiveEffectsForCurrentItem()
+            } else {
+                rebuildPreviewPlaylist(project)
+            }
+            lastRebuiltProject = project
             resyncPreviewSurface()
 
             val tracks = project.audioTracks
