@@ -150,13 +150,8 @@ class EditorActivity : AppCompatActivity() {
             requestNotificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
 
-        player = ExoPlayer.Builder(this).build()
+        player = createPreviewPlayer()
         binding.previewPlayerView.player = player
-        player.addListener(object : androidx.media3.common.Player.Listener {
-            override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
-                applyLiveEffectsForCurrentItem()
-            }
-        })
 
         binding.timelineView.listener = object : TimelineView.Listener {
             override fun onClipTrimmed(clipId: String, newTrimStartMs: Long, newTrimEndMs: Long) {
@@ -1452,13 +1447,43 @@ class EditorActivity : AppCompatActivity() {
         }
     }
 
+    /**
+     * Builds a fresh ExoPlayer instance with the standard listener attached.
+     * Called once in onCreate, and again on every rebuildPreviewPlaylist()
+     * call (see there for why) -- so this must fully set up everything the
+     * player needs, not just construct it.
+     */
+    private fun createPreviewPlayer(): ExoPlayer {
+        val newPlayer = ExoPlayer.Builder(this).build()
+        newPlayer.addListener(object : androidx.media3.common.Player.Listener {
+            override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                applyLiveEffectsForCurrentItem()
+            }
+        })
+        return newPlayer
+    }
+
     private fun rebuildPreviewPlaylist(project: com.example.videoeditor.model.Project) {
         val wasPlaying = player.isPlaying
         val resumeIndex = player.currentMediaItemIndex.coerceAtLeast(0)
         val resumePosition = player.currentPosition.coerceAtLeast(0L)
 
-        player.stop()
-        player.clearMediaItems()
+        // Recreate the player from scratch (release the old one, build a new
+        // one) instead of reusing the same instance via stop()/
+        // clearMediaItems(). Reported pattern: overlays render correctly and
+        // playback stays stable right after a fresh app launch (new player,
+        // first prepare), but break again on the very next live edit within
+        // that same session (same player instance, stop/rebuild/prepare
+        // cycle repeated) -- with the "add text, breaks; reopen app, 2
+        // overlays now show fine; add/move text again, breaks again" pattern
+        // pointing specifically at something not being fully reset by
+        // stop()/clearMediaItems()/prepare() on a REUSED instance, even
+        // though it's clean on a brand new one. This directly targets that:
+        // every rebuild now gets the same "cold start" conditions a fresh
+        // app launch gets.
+        player.release()
+        player = createPreviewPlayer()
+        binding.previewPlayerView.player = player
 
         project.clips.forEach { clip ->
             val mediaItem = MediaItem.Builder()
