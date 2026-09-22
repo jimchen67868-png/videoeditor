@@ -762,34 +762,30 @@ class EditorActivity : AppCompatActivity() {
             val clipLocalImageOverlays = com.example.videoeditor.effects.ImageOverlayEffectFactory.overlaysForWindow(
                 project.imageOverlays, clipGlobalStartMs, clip.timelineDurationMs
             )
-            // DISABLED again. Across many attempted variations (full player
-            // rebuild on every change, a lightweight live-update-only path,
-            // that path debounced, single overlay only, multiple overlays),
-            // live overlay content rendering has broken playback in nearly
-            // every configuration -- most recently, a freeze with what
-            // appeared to be just ONE active overlay, right after adding
-            // multi-overlay support, suggesting the instability isn't
-            // specific to overlay count either. That's a strong, convergent
-            // pattern pointing at something more fundamental:
-            // ExoPlayer.setVideoEffects() with an OverlayEffect may simply
-            // not be reliable in this Media3 version/environment, regardless
-            // of how or how often it's invoked. Export (Media3 Transformer,
-            // a completely different and more mature pipeline) has never
-            // shown this problem -- exported files always render overlays
-            // correctly. Practical result: text/image overlays show only as
-            // a selection/position box in live preview, but WILL appear
-            // correctly in the exported video. See TextOverlayEffectFactory/
-            // ImageOverlayEffectFactory for the multi-overlay, zIndex-sorted
-            // logic already written and ready to re-enable here if this gets
-            // properly root-caused in the future (e.g. via a newer Media3
-            // release or a non-live-effects preview strategy), rather than
-            // guessed at again.
-            // val layeredOverlayEffects = mutableListOf<Pair<Int, androidx.media3.common.Effect>>()
-            // layeredOverlayEffects += com.example.videoeditor.effects.TextOverlayEffectFactory.build(clipLocalOverlays)
-            // layeredOverlayEffects += com.example.videoeditor.effects.ImageOverlayEffectFactory.build(this, clipLocalImageOverlays)
-            // layeredOverlayEffects
-            //     .sortedBy { (zIndex, _) -> zIndex }
-            //     .forEach { (_, effect) -> effects += effect }
+            // RE-ENABLED again. The previous disable was based on a
+            // convergent-failure pattern across many variations (full
+            // rebuild, lightweight update, debounced, single/multiple
+            // overlays) -- but a further data point clarified WHAT was
+            // actually converging: overlays rendered correctly right after
+            // a fresh app launch (new ExoPlayer instance), but broke again
+            // on the next live edit within that same session (same
+            // ExoPlayer instance, reused via stop()/clearMediaItems()/
+            // prepare()). That isolates the variable that was constant
+            // across every failed attempt: REUSING the same player instance
+            // across rebuilds. rebuildPreviewPlaylist() now releases the old
+            // player and builds a brand new one (createPreviewPlayer()) on
+            // every rebuild, giving every edit the same "cold start"
+            // conditions a fresh app launch gets. This is a genuinely
+            // different mechanism than anything tried before, so it
+            // deserves an actual test rather than staying disabled by
+            // default. If it still breaks, that would mean the instability
+            // is deeper than player-instance reuse.
+            val layeredOverlayEffects = mutableListOf<Pair<Int, androidx.media3.common.Effect>>()
+            layeredOverlayEffects += com.example.videoeditor.effects.TextOverlayEffectFactory.build(clipLocalOverlays)
+            layeredOverlayEffects += com.example.videoeditor.effects.ImageOverlayEffectFactory.build(this, clipLocalImageOverlays)
+            layeredOverlayEffects
+                .sortedBy { (zIndex, _) -> zIndex }
+                .forEach { (_, effect) -> effects += effect }
 
             // Same fade logic as TimelineExporter, so preview matches export.
             val previousClip = project.clips.getOrNull(index - 1)
