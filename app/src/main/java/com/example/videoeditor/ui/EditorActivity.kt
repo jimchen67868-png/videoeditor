@@ -767,22 +767,24 @@ class EditorActivity : AppCompatActivity() {
             val clipLocalImageOverlays = com.example.videoeditor.effects.ImageOverlayEffectFactory.overlaysForWindow(
                 project.imageOverlays, clipGlobalStartMs, clip.timelineDurationMs
             )
-            // RE-ENABLED again per explicit, repeated user request. Same code
-            // and same conservative scope (one overlay at a time, text
-            // preferred over image) as the two previous attempts, BOTH of
-            // which crashed the same way (freeze/black screen after resize or
-            // drag). No new fix for the underlying instability has been
-            // found -- that would need an actual crash log (adb logcat) to
-            // diagnose, which hasn't been captured yet. If this crashes
-            // again, please capture logcat AT THE MOMENT of the freeze this
-            // time (see the instructions already given) rather than just
-            // reverting again, so this can finally be root-caused instead of
-            // guessed at a fourth time.
-            if (clipLocalOverlays.isNotEmpty()) {
-                com.example.videoeditor.effects.TextOverlayEffectFactory.build(clipLocalOverlays.takeLast(1)).forEach { (_, effect) -> effects += effect }
-            } else if (clipLocalImageOverlays.isNotEmpty()) {
-                com.example.videoeditor.effects.ImageOverlayEffectFactory.build(this, clipLocalImageOverlays.takeLast(1)).forEach { (_, effect) -> effects += effect }
-            }
+            // Shows ALL active overlapping text/image overlays now, not just
+            // one -- per explicit request, after several rounds of getting
+            // even a SINGLE live overlay effect stable (see git history: the
+            // eventual fix was always doing the full player rebuild rather
+            // than any live in-place effects update). This combination
+            // (multiple simultaneous OverlayEffect objects in the LIVE
+            // ExoPlayer pipeline) has never been tested here before -- export
+            // has always handled multiple overlays correctly via Composition,
+            // but that's a separate, more mature pipeline. Same zIndex-sorted
+            // stacking order as TimelineExporter, so preview matches export
+            // (see the comment there for why the sort is stable and what a
+            // tie means).
+            val layeredOverlayEffects = mutableListOf<Pair<Int, androidx.media3.common.Effect>>()
+            layeredOverlayEffects += com.example.videoeditor.effects.TextOverlayEffectFactory.build(clipLocalOverlays)
+            layeredOverlayEffects += com.example.videoeditor.effects.ImageOverlayEffectFactory.build(this, clipLocalImageOverlays)
+            layeredOverlayEffects
+                .sortedBy { (zIndex, _) -> zIndex }
+                .forEach { (_, effect) -> effects += effect }
 
             // Same fade logic as TimelineExporter, so preview matches export.
             val previousClip = project.clips.getOrNull(index - 1)
