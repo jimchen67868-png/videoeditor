@@ -48,32 +48,7 @@ class EditorActivity : AppCompatActivity() {
     // the pragmatic way to actually play them all back together here.
     private val musicPlayers = mutableMapOf<String, ExoPlayer>()
 
-    // Last project state a full player rebuild was done for -- lets the
-    // observer detect "only overlay content changed" (see below) apart from
-    // "clips/audio/filters/effects/transitions changed," which still need
-    // the full rebuild.
-    private var lastRebuiltProject: com.example.videoeditor.model.Project? = null
     private var lastKnownPlayheadMs: Long = 0L
-    private val liveEffectsDebounceHandler = android.os.Handler(android.os.Looper.getMainLooper())
-    private var pendingLiveEffectsRunnable: Runnable? = null
-
-    /**
-     * Debounces applyLiveEffectsForCurrentItem() so a rapid burst of
-     * overlay-only project updates (e.g. every ACTION_MOVE frame of a
-     * timeline drag) results in ONE player.setVideoEffects() call after
-     * things settle, not one per frame. Each call cancels any not-yet-run
-     * pending refresh and reschedules, so only the LAST update in a burst
-     * actually triggers a refresh.
-     */
-    private fun scheduleLiveEffectsRefresh() {
-        pendingLiveEffectsRunnable?.let { liveEffectsDebounceHandler.removeCallbacks(it) }
-        val runnable = Runnable {
-            applyLiveEffectsForCurrentItem()
-            resyncPreviewSurface()
-        }
-        pendingLiveEffectsRunnable = runnable
-        liveEffectsDebounceHandler.postDelayed(runnable, 150L)
-    }
 
     // --- Drag-to-reposition / resize proxy for whichever text overlay/sticker
     // or image overlay is active at the current playhead (see setupOverlayProxyDragAndResize) ---
@@ -376,49 +351,33 @@ class EditorActivity : AppCompatActivity() {
             binding.timelineView.setTextOverlays(project.textOverlays)
             binding.timelineView.setImageOverlays(project.imageOverlays)
 
-            // Skip the expensive full rebuild for overlay-only changes
-            // (position/size/selection edits to text or image overlays),
-            // since logcat evidence showed that rebuild involves a real,
-            // measurable stall -- full MediaCodec decoder release +
-            // reinitialization, over a second in testing -- long enough to
-            // look like a freeze. A previous "lightweight" version of this
-            // exact optimization was removed after apparently causing
-            // playback to break; that decision may have been based on this
-            // same kind of stall being mistaken for a crash (no crash/ANR
-            // ever showed up in logcat here), but that can't be confirmed
-            // without logs from the original incident, so treat this as
-            // needing real on-device testing, not a guaranteed fix.
-            //
-            // "Overlay-only" is determined structurally: strip both overlay
-            // lists from both the previous and current project and compare
-            // everything else (clips, audio, filters, effects, transitions)
-            // for equality. If that's unchanged, only overlay content
-            // differs, and applyLiveEffectsForCurrentItem() alone is enough
-            // -- it just calls player.setVideoEffects() without touching
-            // MediaItems or the underlying decoders at all.
-            val previous = lastRebuiltProject
-            val overlayOnlyChange = previous != null &&
-                previous.copy(textOverlays = emptyList(), imageOverlays = emptyList()) ==
-                project.copy(textOverlays = emptyList(), imageOverlays = emptyList())
-
-            if (overlayOnlyChange) {
-                // Debounced, NOT called immediately: dragging a text/image
-                // overlay clip on the TIMELINE (as opposed to dragging it in
-                // the preview box, which only commits on release) fires
-                // onTextOverlayTrimmed/onImageOverlayTrimmed on every single
-                // ACTION_MOVE frame -- trimTextOverlayLive/
-                // trimImageOverlayLive update _project.value on every one of
-                // those, which would otherwise call the experimental
-                // player.setVideoEffects() dozens of times per second during
-                // a drag. That high-frequency call pattern is the most
-                // concrete, evidence-backed explanation found so far for
-                // playback breaking after a timeline drag specifically.
-                scheduleLiveEffectsRefresh()
-            } else {
-                rebuildPreviewPlaylist(project)
-                resyncPreviewSurface()
-            }
-            lastRebuiltProject = project
+            // Always do the full rebuild for every project change, including
+            // overlay-only ones. A "skip the full rebuild for overlay-only
+            // changes" optimization was tried here (see git history), based
+            // on logcat evidence that the full rebuild involves a real,
+            // measurable stall (full MediaCodec decoder release +
+            // reinitialization, over a second in testing). That optimization
+            // was then refined with debouncing after a timeline drag broke
+            // playback, on the theory that the problem was CALL FREQUENCY
+            // (player.setVideoEffects() firing dozens of times/second during
+            // a drag). But a further report -- playback breaking on EVERY
+            // SINGLE "add text" action, a one-time event with no rapid
+            // repeated calls involved -- ruled that theory out. The more
+            // likely explanation: TextOverlayEffectFactory/
+            // ImageOverlayEffectFactory always construct brand-new effect
+            // object instances on every build() call (never reusing them),
+            // and swapping in an entirely new OverlayEffect via a LIVE
+            // setVideoEffects() call -- without an accompanying stop/
+            // prepare() cycle -- may simply be unsafe in this Media3 version,
+            // independent of how often it happens. That also matches the
+            // original historical note this whole investigation started
+            // from: a "lightweight" refresh path was removed once before for
+            // "causing playback to break after resizing an overlay," which
+            // fits a single-call instability, not a frequency problem.
+            // Reverting to always-full-rebuild, the last state that was
+            // actually reliable, even though slower.
+            rebuildPreviewPlaylist(project)
+            resyncPreviewSurface()
 
             val tracks = project.audioTracks
             binding.musicTrackLabel.text = when {
@@ -1598,7 +1557,6 @@ class EditorActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
-        pendingLiveEffectsRunnable?.let { liveEffectsDebounceHandler.removeCallbacks(it) }
         player.release()
         musicPlayers.values.forEach { it.release() }
         super.onDestroy()
