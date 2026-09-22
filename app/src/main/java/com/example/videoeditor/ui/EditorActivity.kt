@@ -767,24 +767,34 @@ class EditorActivity : AppCompatActivity() {
             val clipLocalImageOverlays = com.example.videoeditor.effects.ImageOverlayEffectFactory.overlaysForWindow(
                 project.imageOverlays, clipGlobalStartMs, clip.timelineDurationMs
             )
-            // Shows ALL active overlapping text/image overlays now, not just
-            // one -- per explicit request, after several rounds of getting
-            // even a SINGLE live overlay effect stable (see git history: the
-            // eventual fix was always doing the full player rebuild rather
-            // than any live in-place effects update). This combination
-            // (multiple simultaneous OverlayEffect objects in the LIVE
-            // ExoPlayer pipeline) has never been tested here before -- export
-            // has always handled multiple overlays correctly via Composition,
-            // but that's a separate, more mature pipeline. Same zIndex-sorted
-            // stacking order as TimelineExporter, so preview matches export
-            // (see the comment there for why the sort is stable and what a
-            // tie means).
-            val layeredOverlayEffects = mutableListOf<Pair<Int, androidx.media3.common.Effect>>()
-            layeredOverlayEffects += com.example.videoeditor.effects.TextOverlayEffectFactory.build(clipLocalOverlays)
-            layeredOverlayEffects += com.example.videoeditor.effects.ImageOverlayEffectFactory.build(this, clipLocalImageOverlays)
-            layeredOverlayEffects
-                .sortedBy { (zIndex, _) -> zIndex }
-                .forEach { (_, effect) -> effects += effect }
+            // DISABLED again. Across many attempted variations (full player
+            // rebuild on every change, a lightweight live-update-only path,
+            // that path debounced, single overlay only, multiple overlays),
+            // live overlay content rendering has broken playback in nearly
+            // every configuration -- most recently, a freeze with what
+            // appeared to be just ONE active overlay, right after adding
+            // multi-overlay support, suggesting the instability isn't
+            // specific to overlay count either. That's a strong, convergent
+            // pattern pointing at something more fundamental:
+            // ExoPlayer.setVideoEffects() with an OverlayEffect may simply
+            // not be reliable in this Media3 version/environment, regardless
+            // of how or how often it's invoked. Export (Media3 Transformer,
+            // a completely different and more mature pipeline) has never
+            // shown this problem -- exported files always render overlays
+            // correctly. Practical result: text/image overlays show only as
+            // a selection/position box in live preview, but WILL appear
+            // correctly in the exported video. See TextOverlayEffectFactory/
+            // ImageOverlayEffectFactory for the multi-overlay, zIndex-sorted
+            // logic already written and ready to re-enable here if this gets
+            // properly root-caused in the future (e.g. via a newer Media3
+            // release or a non-live-effects preview strategy), rather than
+            // guessed at again.
+            // val layeredOverlayEffects = mutableListOf<Pair<Int, androidx.media3.common.Effect>>()
+            // layeredOverlayEffects += com.example.videoeditor.effects.TextOverlayEffectFactory.build(clipLocalOverlays)
+            // layeredOverlayEffects += com.example.videoeditor.effects.ImageOverlayEffectFactory.build(this, clipLocalImageOverlays)
+            // layeredOverlayEffects
+            //     .sortedBy { (zIndex, _) -> zIndex }
+            //     .forEach { (_, effect) -> effects += effect }
 
             // Same fade logic as TimelineExporter, so preview matches export.
             val previousClip = project.clips.getOrNull(index - 1)
