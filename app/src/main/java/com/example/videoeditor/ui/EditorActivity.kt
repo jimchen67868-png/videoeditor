@@ -575,9 +575,7 @@ class EditorActivity : AppCompatActivity() {
         binding.overlayProxyBox.visibility = android.view.View.VISIBLE
         if (isDraggingOverlay || isResizingOverlay) return // don't reset position mid-gesture
 
-        val previewWidth = binding.previewPlayerView.width
-        val previewHeight = binding.previewPlayerView.height
-        if (previewWidth == 0 || previewHeight == 0) return // not laid out yet
+        val videoRect = previewVideoRect() ?: return // not laid out yet
 
         // Only snap to the overlay's stored position when we just switched to
         // it -- otherwise leave the box where the user last dragged it within
@@ -609,8 +607,8 @@ class EditorActivity : AppCompatActivity() {
                 width = boxWidthPx
                 height = boxHeightPx
             }
-            binding.overlayProxyBox.x = posX * previewWidth - boxWidthPx / 2f
-            binding.overlayProxyBox.y = posY * previewHeight - boxHeightPx / 2f
+            binding.overlayProxyBox.x = videoRect.left + posX * videoRect.width() - boxWidthPx / 2f
+            binding.overlayProxyBox.y = videoRect.top + posY * videoRect.height() - boxHeightPx / 2f
         }
     }
 
@@ -688,16 +686,14 @@ class EditorActivity : AppCompatActivity() {
     private fun commitOverlayTransform(overrideMetric: Float?) {
         val overlayId = activeOverlayId ?: return
         val kind = activeOverlayKind ?: return
-        val previewWidth = binding.previewPlayerView.width
-        val previewHeight = binding.previewPlayerView.height
-        if (previewWidth == 0 || previewHeight == 0) return
+        val videoRect = previewVideoRect() ?: return
 
         val boxWidth = binding.overlayProxyBox.width
         val boxHeight = binding.overlayProxyBox.height
         val centerX = binding.overlayProxyBox.x + boxWidth / 2f
         val centerY = binding.overlayProxyBox.y + boxHeight / 2f
-        val normalizedX = (centerX / previewWidth).coerceIn(0f, 1f)
-        val normalizedY = (centerY / previewHeight).coerceIn(0f, 1f)
+        val normalizedX = ((centerX - videoRect.left) / videoRect.width()).coerceIn(0f, 1f)
+        val normalizedY = ((centerY - videoRect.top) / videoRect.height()).coerceIn(0f, 1f)
 
         when (kind) {
             OverlayKind.TEXT -> {
@@ -721,6 +717,63 @@ class EditorActivity : AppCompatActivity() {
         return viewModel.project.value?.imageOverlays?.firstOrNull { it.id == id }?.scale ?: 1f
     }
 
+    /**
+     * The preview container (previewPlayerView) has no fixed aspect ratio --
+     * it just fills whatever vertical space is left by the layout_weight
+     * split with the timeline below. PlayerView's default RESIZE_MODE_FIT
+     * scales the video to CONTAIN within that box, preserving aspect ratio,
+     * which almost always leaves letterbox/pillarbox bars unless the
+     * container's aspect happens to exactly match the video's. Those bars
+     * are invisible against the app's black background.
+     *
+     * Overlay position math (both the drag-box display in syncOverlayProxy
+     * and the save-on-drag conversion in commitOverlayTransform) used to
+     * treat the FULL view width/height as the video's coordinate space --
+     * ignoring those bars. But the actual overlay render (backgroundFrameAnchor
+     * in TextOverlayEffectFactory/ImageOverlayEffectFactory) is positioned in
+     * the real video frame's own coordinate space, before that frame gets
+     * scaled+letterboxed into the view. So the two disagreed by exactly the
+     * bar size -- worse the further an overlay sits from center -- which is
+     * why the drag box and the actually-rendered text stopped matching up.
+     *
+     * This returns the actual displayed video rect (in previewPlayerView's
+     * local coordinates), replicating RESIZE_MODE_FIT's contain-scaling, so
+     * both call sites can normalize against the real video area instead of
+     * the raw view bounds.
+     */
+    private fun previewVideoRect(): android.graphics.RectF? {
+        val viewWidth = binding.previewPlayerView.width
+        val viewHeight = binding.previewPlayerView.height
+        if (viewWidth <= 0 || viewHeight <= 0) return null // not laid out yet
+
+        val videoSize = player.videoSize
+        val rawWidth = videoSize.width
+        val rawHeight = videoSize.height
+        if (rawWidth <= 0 || rawHeight <= 0) {
+            // Video size not known yet (e.g. player just recreated, not
+            // prepared/decoding a frame yet) -- fall back to the full view
+            // rather than hiding the box entirely.
+            return android.graphics.RectF(0f, 0f, viewWidth.toFloat(), viewHeight.toFloat())
+        }
+
+        val videoAspect = (rawWidth * videoSize.pixelWidthHeightRatio) / rawHeight
+        val viewAspect = viewWidth.toFloat() / viewHeight.toFloat()
+
+        return if (videoAspect > viewAspect) {
+            // Video proportionally wider than the container -> constrained
+            // by width, letterboxed with bars top/bottom.
+            val displayedHeight = viewWidth / videoAspect
+            val top = (viewHeight - displayedHeight) / 2f
+            android.graphics.RectF(0f, top, viewWidth.toFloat(), top + displayedHeight)
+        } else {
+            // Video proportionally taller/narrower -> constrained by height,
+            // pillarboxed with bars left/right.
+            val displayedWidth = viewHeight * videoAspect
+            val left = (viewWidth - displayedWidth) / 2f
+            android.graphics.RectF(left, 0f, left + displayedWidth, viewHeight.toFloat())
+        }
+    }
+
     private fun formatTime(ms: Long): String {
         val totalSeconds = ms / 1000
         val minutes = totalSeconds / 60
@@ -741,7 +794,10 @@ class EditorActivity : AppCompatActivity() {
      * avoids that entirely. Wrapped in try/catch as a safety net: a compatibility
      * hiccup here should never be able to break playback outright.
      */
-    private fun applyLiveEffectsForCurrentItem(index: Int = player.currentMediaItemIndex) {
+    private fun applyLiveEffectsForCurrentItem(
+        index: Int = player.currentMediaItemIndex,
+        clipLocalStartMs: Long = 0
+    ) {
         val project = viewModel.project.value ?: return
         val clip = project.clips.getOrNull(index) ?: return
 
@@ -781,7 +837,10 @@ class EditorActivity : AppCompatActivity() {
             // default. If it still breaks, that would mean the instability
             // is deeper than player-instance reuse.
             val layeredOverlayEffects = mutableListOf<Pair<Int, androidx.media3.common.Effect>>()
-            layeredOverlayEffects += com.example.videoeditor.effects.TextOverlayEffectFactory.build(clipLocalOverlays)
+            layeredOverlayEffects += com.example.videoeditor.effects.TextOverlayEffectFactory.build(
+                clipLocalOverlays,
+                clipLocalStartMs = clipLocalStartMs
+            )
             layeredOverlayEffects += com.example.videoeditor.effects.ImageOverlayEffectFactory.build(this, clipLocalImageOverlays)
             layeredOverlayEffects
                 .sortedBy { (zIndex, _) -> zIndex }
@@ -1499,7 +1558,14 @@ class EditorActivity : AppCompatActivity() {
         // already-prepared/playing player is unreliable and previously caused
         // playback to stop responding after a filter change.
         if (project.clips.isNotEmpty()) {
-            applyLiveEffectsForCurrentItem(targetIndex)
+            // Pass the actual clip-local position we're about to resume at
+            // (captured above, before the old player was released) so the
+            // overlay timing calibration in TextOverlayEffectFactory anchors
+            // to the true resume point instead of wrongly assuming playback
+            // always resumes from the start of the clip. See the comment on
+            // TextOverlayEffectFactory.build() for why this matters.
+            val resumeClipLocalMs = if (targetIndex == resumeIndex) resumePosition else 0L
+            applyLiveEffectsForCurrentItem(targetIndex, clipLocalStartMs = resumeClipLocalMs)
         }
 
         player.prepare()

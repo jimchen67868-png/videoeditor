@@ -64,7 +64,11 @@ object TextOverlayEffectFactory {
      *   pre-scaled relative to the actual output width removes that
      *   dependency entirely.
      */
-    fun build(overlays: List<TextOverlay>, referenceWidthPx: Int = 1080): List<Pair<Int, OverlayEffect>> {
+    fun build(
+        overlays: List<TextOverlay>,
+        referenceWidthPx: Int = 1080,
+        clipLocalStartMs: Long = 0
+    ): List<Pair<Int, OverlayEffect>> {
         return overlays.map { overlay ->
             val pixelSize = (overlay.sizeSp * (referenceWidthPx / 360f)).toInt().coerceAtLeast(1)
             val spannable = SpannableString(overlay.text).apply {
@@ -76,28 +80,34 @@ object TextOverlayEffectFactory {
             }
 
             val media3Overlay = object : Media3TextOverlay() {
-                // Self-calibrating: the very first presentationTimeUs this
-                // effect instance ever observes is treated as "time zero" for
-                // this clip. This avoids depending on an assumption about
-                // whether Media3 resets presentationTimeUs to ~0 at the start
-                // of each clip in a sequence, or keeps it continuously
-                // increasing across the whole composition -- an assumption
-                // that was never actually verified and, per real-device
-                // testing, appears to have been wrong (overlays worked on the
-                // first clip but not subsequent ones, which fits: if
-                // presentationTimeUs is continuous/global, only the first
-                // clip's cumulative offset happens to be zero, coincidentally
-                // making the old fixed-assumption math look correct there).
-                // Each Media3TextOverlay instance is freshly created per clip
-                // (see build() below), so this calibration is naturally
-                // scoped to just that one clip.
+                // Self-calibrating baseline, same as before: the first
+                // presentationTimeUs this effect instance observes marks a
+                // fixed reference point (avoids depending on unverified
+                // assumptions about whether presentationTimeUs resets per
+                // clip or stays continuous across the whole composition).
+                //
+                // What changed: the OLD code assumed that first-observed
+                // frame was always clip-local time ZERO. That's only true
+                // when playback happens to resume from the very start of the
+                // clip. Every live edit rebuilds the player
+                // (rebuildPreviewPlaylist) and resumes from wherever the
+                // playhead was sitting -- e.g. mid-clip at 0:05 -- so the
+                // "first observed" frame is really clip-local 0:05, not 0.
+                // Treating it as 0 silently shifted every overlay's active
+                // window by the resume offset, which is what caused text2 to
+                // vanish and text1 to wrongly appear after a drag-triggered
+                // rebuild. [clipLocalStartMs] is the actual known clip-local
+                // position playback is resuming from (passed in by the
+                // caller, e.g. from ExoPlayer.currentPosition captured right
+                // before the rebuild), so the baseline now anchors to the
+                // true clip-local time instead of assuming zero.
                 private var firstObservedTimeUs: Long? = null
 
                 override fun getText(presentationTimeUs: Long): SpannableString = spannable
 
                 override fun getOverlaySettings(presentationTimeUs: Long): OverlaySettings {
                     val baseline = firstObservedTimeUs ?: presentationTimeUs.also { firstObservedTimeUs = it }
-                    val timeMs = (presentationTimeUs - baseline) / 1000
+                    val timeMs = clipLocalStartMs + (presentationTimeUs - baseline) / 1000
                     val alpha = if (timeMs in overlay.startMs..overlay.endMs) 1f else 0f
                     return OverlaySettings.Builder()
                         .setAlphaScale(alpha)
