@@ -593,6 +593,19 @@ class EditorActivity : AppCompatActivity() {
             // a ratio of box-height change, so as long as the starting box
             // height truthfully reflects the current model value, resizing
             // stays self-consistent across repeated select/resize/deselect cycles.
+            // Box size must also be scaled down to match how much the video
+            // itself is shrunk by letterboxing/pillarboxing -- previously
+            // this only used fixed dp constants * sizeRatio, with no relation
+            // to videoRect at all. That meant whenever the video didn't fill
+            // the full preview container (e.g. this device's aspect doesn't
+            // match the clip's), the box stayed full "un-letterboxed" size
+            // while the actual rendered overlay is scaled down along with
+            // the video -- so the box visually overhung the video on both
+            // sides at EVERY position, not just near the edges (matching the
+            // "wrong position everywhere" report, not just the "dragged off
+            // the edge" case).
+            val viewWidthPx = binding.previewPlayerView.width.toFloat().coerceAtLeast(1f)
+            val videoScale = (videoRect.width() / viewWidthPx).coerceIn(0.01f, 1f)
             val baseWidthPx = (120 * resources.displayMetrics.density).toInt()
             val baseHeightPx = (60 * resources.displayMetrics.density).toInt()
             val minSizePx = (30 * resources.displayMetrics.density).toInt()
@@ -601,8 +614,8 @@ class EditorActivity : AppCompatActivity() {
                 imageOverlay != null -> imageOverlay.scale / REFERENCE_IMAGE_SCALE
                 else -> 1f
             }
-            val boxWidthPx = (baseWidthPx * sizeRatio).toInt().coerceAtLeast(minSizePx)
-            val boxHeightPx = (baseHeightPx * sizeRatio).toInt().coerceAtLeast(minSizePx)
+            val boxWidthPx = (baseWidthPx * sizeRatio * videoScale).toInt().coerceAtLeast(minSizePx)
+            val boxHeightPx = (baseHeightPx * sizeRatio * videoScale).toInt().coerceAtLeast(minSizePx)
             binding.overlayProxyBox.layoutParams = binding.overlayProxyBox.layoutParams.apply {
                 width = boxWidthPx
                 height = boxHeightPx
@@ -747,13 +760,23 @@ class EditorActivity : AppCompatActivity() {
         if (viewWidth <= 0 || viewHeight <= 0) return null // not laid out yet
 
         val videoSize = player.videoSize
-        val rawWidth = videoSize.width
-        val rawHeight = videoSize.height
+        var rawWidth = videoSize.width
+        var rawHeight = videoSize.height
         if (rawWidth <= 0 || rawHeight <= 0) {
             // Video size not known yet (e.g. player just recreated, not
             // prepared/decoding a frame yet) -- fall back to the full view
             // rather than hiding the box entirely.
             return android.graphics.RectF(0f, 0f, viewWidth.toFloat(), viewHeight.toFloat())
+        }
+        // Guard against unapplied rotation metadata: some sources report
+        // pre-rotation decode dimensions via unappliedRotationDegrees rather
+        // than baking the swap into width/height, particularly once a
+        // custom video-effects pipeline is attached (our overlay effects).
+        // Unverified against an actual device for this specific clip --
+        // flagging in case the mismatch persists after the box-size fix, so
+        // it's not a silent, undetectable assumption.
+        if (videoSize.unappliedRotationDegrees == 90 || videoSize.unappliedRotationDegrees == 270) {
+            val swap = rawWidth; rawWidth = rawHeight; rawHeight = swap
         }
 
         val videoAspect = (rawWidth * videoSize.pixelWidthHeightRatio) / rawHeight
