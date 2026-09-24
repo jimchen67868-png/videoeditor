@@ -583,20 +583,17 @@ class EditorActivity : AppCompatActivity() {
         // this just avoids a visible jump every poll tick).
         if (isNewSelection) {
             // TEMP DIAGNOSTIC -- remove once the box/text position bug is
-            // confirmed fixed. This tells us, from a real device, whether
-            // the black margin around the video content is genuine
-            // PlayerView pillarboxing (rawWidth/rawHeight from player.videoSize
-            // will differ in aspect from the view) or baked into the source
-            // clip's own pixels (rawWidth/rawHeight aspect will already match
-            // the view, i.e. videoScale below will be ~1.0). Check logcat,
-            // tag "OverlayDiag", right after selecting text1.
-            android.util.Log.d(
-                "OverlayDiag",
-                "viewSize=${binding.previewPlayerView.width}x${binding.previewPlayerView.height} " +
-                    "videoSize=${player.videoSize.width}x${player.videoSize.height} " +
-                    "unappliedRotation=${player.videoSize.unappliedRotationDegrees} " +
-                    "videoRect=$videoRect overlay.x=$posX overlay.y=$posY"
-            )
+            // confirmed fixed. Using a Toast instead of Log.d: Termux's
+            // logcat can't read another app's log output without root/adb
+            // (Android restricts cross-app log access), so a visible Toast
+            // is the reliable way to get this data off a real device here.
+            val diagMsg = "view=${binding.previewPlayerView.width}x${binding.previewPlayerView.height} " +
+                "video=${player.videoSize.width}x${player.videoSize.height} " +
+                "rot=${player.videoSize.unappliedRotationDegrees} " +
+                "rect=(${videoRect.left.toInt()},${videoRect.top.toInt()},${videoRect.right.toInt()},${videoRect.bottom.toInt()}) " +
+                "ovX=$posX ovY=$posY"
+            android.util.Log.d("OverlayDiag", diagMsg)
+            android.widget.Toast.makeText(this, diagMsg, android.widget.Toast.LENGTH_LONG).show()
             // Box size must be DERIVED from the overlay's actual saved
             // sizeSp/scale here, not reset to a fixed constant -- previously
             // every reselect snapped back to a hardcoded 120x60dp box no
