@@ -582,18 +582,6 @@ class EditorActivity : AppCompatActivity() {
         // this same active window (position already committed to the model,
         // this just avoids a visible jump every poll tick).
         if (isNewSelection) {
-            // TEMP DIAGNOSTIC -- remove once the box/text position bug is
-            // confirmed fixed. Using a Toast instead of Log.d: Termux's
-            // logcat can't read another app's log output without root/adb
-            // (Android restricts cross-app log access), so a visible Toast
-            // is the reliable way to get this data off a real device here.
-            val diagMsg = "view=${binding.previewPlayerView.width}x${binding.previewPlayerView.height} " +
-                "video=${player.videoSize.width}x${player.videoSize.height} " +
-                "rot=${player.videoSize.unappliedRotationDegrees} " +
-                "rect=(${videoRect.left.toInt()},${videoRect.top.toInt()},${videoRect.right.toInt()},${videoRect.bottom.toInt()}) " +
-                "ovX=$posX ovY=$posY"
-            android.util.Log.d("OverlayDiag", diagMsg)
-            android.widget.Toast.makeText(this, diagMsg, android.widget.Toast.LENGTH_LONG).show()
             // Box size must be DERIVED from the overlay's actual saved
             // sizeSp/scale here, not reset to a fixed constant -- previously
             // every reselect snapped back to a hardcoded 120x60dp box no
@@ -1567,6 +1555,21 @@ class EditorActivity : AppCompatActivity() {
         newPlayer.addListener(object : androidx.media3.common.Player.Listener {
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
                 applyLiveEffectsForCurrentItem()
+            }
+
+            override fun onVideoSizeChanged(videoSize: androidx.media3.common.VideoSize) {
+                // player.videoSize is (0,0) until the player has parsed the
+                // format -- which, per the OverlayDiag toast, has NOT
+                // happened yet at the moment a person selects an overlay
+                // right after opening the editor, before ever pressing play
+                // (the normal way to test repositioning). Until now,
+                // previewVideoRect() silently fell back to the full view
+                // rect in that window, meaning the letterbox-aware box
+                // math was effectively never active for that common case.
+                // Force a fresh resnap now that real dimensions are known,
+                // the same way resyncPreviewSurface() does after a rebuild.
+                activeOverlayId = null
+                viewModel.project.value?.let { syncOverlayProxy(it, lastKnownPlayheadMs) }
             }
         })
         return newPlayer
