@@ -1521,6 +1521,25 @@ class EditorActivity : AppCompatActivity() {
             binding.previewPlayerView.visibility = android.view.View.INVISIBLE
             binding.previewPlayerView.post {
                 binding.previewPlayerView.visibility = android.view.View.VISIBLE
+                // Also force a fresh overlay-box resnap now that the surface
+                // has actually settled to its final on-screen bounds.
+                // syncOverlayProxy only recomputes box position on a ONE-SHOT
+                // basis when the selected overlay changes (isNewSelection) --
+                // and adding a new text overlay both auto-selects it AND
+                // triggers this exact resync (via rebuildPreviewPlaylist just
+                // before this call). If that one-shot resnap's poller tick
+                // happens to land in the 1-2 frame gap between the rebuild
+                // and the surface finishing its async reattach above, it
+                // computes the box from the NEW correct view bounds while the
+                // SurfaceView is still visually painting the OLD stale
+                // bounds -- box and rendered text visibly disagree, and stay
+                // that way since the resnap doesn't fire again until the next
+                // reselection. Resetting activeOverlayId forces the next
+                // syncOverlayProxy call (right here, after the toggle) to
+                // treat it as a fresh selection again, this time guaranteed
+                // to run after the surface has truly settled.
+                activeOverlayId = null
+                viewModel.project.value?.let { syncOverlayProxy(it, lastKnownPlayheadMs) }
             }
         }
     }
