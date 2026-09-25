@@ -71,7 +71,12 @@
             android:id="@+id/previewPlayerView"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            app:use_controller="true" />
+            app:use_controller="true"
+            app:show_rewind_button="false"
+            app:show_fastforward_button="false"
+            app:show_next_button="false"
+            app:show_previous_button="false"
+            app:show_shuffle_button="false" />
         <!-- surface_type was briefly changed to texture_view to fix the video
              rendering too small after a surrounding layout resize (SurfaceView's
              on-screen size/position sync lagging behind layout changes). Reverted
