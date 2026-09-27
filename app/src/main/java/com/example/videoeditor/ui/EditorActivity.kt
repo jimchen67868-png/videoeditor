@@ -974,6 +974,9 @@ class EditorActivity : AppCompatActivity() {
             sizeSp = 60f
         )
         viewModel.addTextOverlay(overlay)
+        // Same fix as the Add Text dialog: auto-select so the real position
+        // box shows up immediately instead of staying invisible.
+        viewModel.selectTextOverlay(overlay.id)
         Toast.makeText(this, "Sticker added", Toast.LENGTH_SHORT).show()
     }
 
@@ -1471,6 +1474,17 @@ class EditorActivity : AppCompatActivity() {
                         sizeSp = selectedSize
                     )
                     viewModel.addTextOverlay(overlay)
+                    // Auto-select the new overlay so our own position/resize
+                    // box (overlayProxyBox) actually shows up immediately.
+                    // Without this, selectedOverlayId stayed whatever it was
+                    // before (often null), so our real box never became
+                    // visible after Add Text at all -- what looked like "the
+                    // box" in the reports was Media3's native PlayerView
+                    // controller (play/pause + likely its default fullscreen
+                    // button), which is unrelated to any overlay and always
+                    // centered. That's also hidden below now, to stop it
+                    // from being mistaken for our resize handle again.
+                    viewModel.selectTextOverlay(overlay.id)
                     Toast.makeText(this, "Text added", Toast.LENGTH_SHORT).show()
                 }
             }

@@ -76,7 +76,8 @@
             app:show_fastforward_button="false"
             app:show_next_button="false"
             app:show_previous_button="false"
-            app:show_shuffle_button="false" />
+            app:show_shuffle_button="false"
+            app:show_fullscreen_button="false" />
         <!-- surface_type was briefly changed to texture_view to fix the video
              rendering too small after a surrounding layout resize (SurfaceView's
              on-screen size/position sync lagging behind layout changes). Reverted
