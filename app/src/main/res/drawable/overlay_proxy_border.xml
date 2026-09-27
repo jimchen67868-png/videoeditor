@@ -1,5 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <shape xmlns:android="http://schemas.android.com/apk/res/android">
     <stroke android:width="2dp" android:color="#00E5C3" />
-    <solid android:color="@android:color/transparent" />
+    <!-- TEMP: semi-opaque fill (was fully transparent) so this box can't be
+         visually confused with anything else behind it, e.g. Media3's
+         native play/pause button, which happens to render at the same
+         screen position when this box's computed location is wrong. Revert
+         to @android:color/transparent once the position bug is confirmed
+         fixed and this diagnostic pass is no longer needed. -->
+    <solid android:color="#5500E5C3" />
 </shape>
