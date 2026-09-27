@@ -556,8 +556,21 @@ class EditorActivity : AppCompatActivity() {
             activeOverlayKind = OverlayKind.TEXT
             binding.overlayProxyText.visibility = android.view.View.VISIBLE
             binding.overlayProxyImage.visibility = android.view.View.GONE
-            binding.overlayProxyText.textSize = textOverlay.sizeSp
-            binding.overlayProxyText.text = textOverlay.text
+            binding.overlayProxyText.textSize = 7f
+            binding.overlayProxyText.setSingleLine(false)
+            binding.overlayProxyText.maxLines = 4
+            binding.overlayProxyText.setTextColor(android.graphics.Color.YELLOW)
+            // TEMP DIAGNOSTIC -- this line runs on EVERY poll tick (unlike
+            // the isNewSelection block below), so it's the one that actually
+            // stays on screen long enough to screenshot. The previous
+            // attempt set this diagnostic text only inside isNewSelection,
+            // but this same line used to unconditionally overwrite it back
+            // to the plain overlay text on the very next tick, faster than
+            // a screenshot could catch it.
+            binding.overlayProxyText.text = "TXT id=${textOverlay.id.takeLast(4)} " +
+                "x=${"%.2f".format(textOverlay.x)} y=${"%.2f".format(textOverlay.y)} " +
+                "box=(${binding.overlayProxyBox.x.toInt()},${binding.overlayProxyBox.y.toInt()}) " +
+                "active=${activeOverlayId?.takeLast(4)} new=$isNewSelection"
             posX = textOverlay.x
             posY = textOverlay.y
         } else {
@@ -622,24 +635,6 @@ class EditorActivity : AppCompatActivity() {
             }
             binding.overlayProxyBox.x = videoRect.left + posX * videoRect.width() - boxWidthPx / 2f
             binding.overlayProxyBox.y = videoRect.top + posY * videoRect.height() - boxHeightPx / 2f
-
-            // TEMP DIAGNOSTIC -- overlayProxyText's color is normally
-            // transparent by design (so the real rendered video text shows
-            // through underneath instead of doubling up). Forcing it visible
-            // here with the actual computed numbers baked in, since multiple
-            // rounds of guessing which UI element is which, from screenshots
-            // alone, haven't converged. This makes the box self-documenting:
-            // whatever this text says IS what the code computed, no more
-            // inference needed. Remove once the position bug is confirmed
-            // fixed for real.
-            binding.overlayProxyText.setTextColor(android.graphics.Color.YELLOW)
-            binding.overlayProxyText.textSize = 7f
-            binding.overlayProxyText.setSingleLine(false)
-            binding.overlayProxyText.maxLines = 4
-            binding.overlayProxyText.text = "id=${textOverlay?.id?.takeLast(4) ?: imageOverlay?.id?.takeLast(4)} " +
-                "x=${"%.2f".format(posX)} y=${"%.2f".format(posY)} " +
-                "box=(${binding.overlayProxyBox.x.toInt()},${binding.overlayProxyBox.y.toInt()}) " +
-                "sel=${viewModel.selectedOverlayId.value?.takeLast(4)}"
         }
     }
 
