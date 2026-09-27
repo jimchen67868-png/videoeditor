@@ -556,10 +556,11 @@ class EditorActivity : AppCompatActivity() {
             activeOverlayKind = OverlayKind.TEXT
             binding.overlayProxyText.visibility = android.view.View.VISIBLE
             binding.overlayProxyImage.visibility = android.view.View.GONE
-            binding.overlayProxyText.textSize = 7f
+            binding.overlayProxyText.textSize = 6.5f
             binding.overlayProxyText.setSingleLine(false)
-            binding.overlayProxyText.maxLines = 4
+            binding.overlayProxyText.maxLines = 5
             binding.overlayProxyText.setTextColor(android.graphics.Color.YELLOW)
+            binding.overlayProxyBox.clipChildren = false // TEMP: let diagnostic text overflow a too-small box instead of being clipped
             // TEMP DIAGNOSTIC -- this line runs on EVERY poll tick (unlike
             // the isNewSelection block below), so it's the one that actually
             // stays on screen long enough to screenshot. The previous
@@ -567,10 +568,12 @@ class EditorActivity : AppCompatActivity() {
             // but this same line used to unconditionally overwrite it back
             // to the plain overlay text on the very next tick, faster than
             // a screenshot could catch it.
-            binding.overlayProxyText.text = "TXT id=${textOverlay.id.takeLast(4)} " +
-                "x=${"%.2f".format(textOverlay.x)} y=${"%.2f".format(textOverlay.y)} " +
-                "box=(${binding.overlayProxyBox.x.toInt()},${binding.overlayProxyBox.y.toInt()}) " +
-                "active=${activeOverlayId?.takeLast(4)} new=$isNewSelection"
+            val diagRect = previewVideoRect()
+            val diagVSize = player.videoSize
+            binding.overlayProxyText.text = "TXT id=${textOverlay.id.takeLast(4)} x=${"%.2f".format(textOverlay.x)} y=${"%.2f".format(textOverlay.y)}\n" +
+                "box=(${binding.overlayProxyBox.x.toInt()},${binding.overlayProxyBox.y.toInt()}) new=$isNewSelection\n" +
+                "vRect=(${diagRect?.left?.toInt()},${diagRect?.top?.toInt()},${diagRect?.right?.toInt()},${diagRect?.bottom?.toInt()})\n" +
+                "vSize=${diagVSize.width}x${diagVSize.height} view=${binding.previewPlayerView.width}x${binding.previewPlayerView.height}"
             posX = textOverlay.x
             posY = textOverlay.y
         } else {
