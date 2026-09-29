@@ -630,8 +630,23 @@ class EditorActivity : AppCompatActivity() {
                 imageOverlay != null -> imageOverlay.scale / REFERENCE_IMAGE_SCALE
                 else -> 1f
             }
-            val boxWidthPx = (baseWidthPx * sizeRatio * videoScale).toInt().coerceAtLeast(minSizePx)
-            val boxHeightPx = (baseHeightPx * sizeRatio * videoScale).toInt().coerceAtLeast(minSizePx)
+            // FIX: previously uncapped, so boxHeightPx scaled linearly and
+            // unbounded with sizeRatio -- for this project's default new-text
+            // size (60sp, sizeRatio 60/24=2.5), that produced a box roughly
+            // 450px tall, ~76% of the entire preview's height, for what
+            // should just be one line of text. Since box.y anchors by
+            // CENTER minus HALF the height, that oversized height dragged
+            // the box's visible top edge far above the overlay's true
+            // center -- confirmed by the diagnostic printout: y=0.85 with a
+            // 595px-tall video area should center around y=506, but the
+            // frozen box printed (320,273), which back-solves to almost
+            // exactly this ~450px height. Now capped to a sane fraction of
+            // the actual video area so a large font size can't blow the box
+            // up past what a text box should reasonably look like.
+            val boxWidthPx = (baseWidthPx * sizeRatio * videoScale).toInt()
+                .coerceIn(minSizePx, (videoRect.width() * 0.9f).toInt().coerceAtLeast(minSizePx))
+            val boxHeightPx = (baseHeightPx * sizeRatio * videoScale).toInt()
+                .coerceIn(minSizePx, (videoRect.height() * 0.3f).toInt().coerceAtLeast(minSizePx))
             binding.overlayProxyBox.layoutParams = binding.overlayProxyBox.layoutParams.apply {
                 width = boxWidthPx
                 height = boxHeightPx
