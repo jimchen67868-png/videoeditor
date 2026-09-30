@@ -558,7 +558,7 @@ class EditorActivity : AppCompatActivity() {
             binding.overlayProxyImage.visibility = android.view.View.GONE
             binding.overlayProxyText.textSize = 6.5f
             binding.overlayProxyText.setSingleLine(false)
-            binding.overlayProxyText.maxLines = 5
+            binding.overlayProxyText.maxLines = 6
             binding.overlayProxyText.setTextColor(android.graphics.Color.YELLOW)
             binding.overlayProxyBox.clipChildren = false // TEMP: let diagnostic text overflow a too-small box instead of being clipped
             // TEMP DIAGNOSTIC -- this line runs on EVERY poll tick (unlike
@@ -573,7 +573,8 @@ class EditorActivity : AppCompatActivity() {
             binding.overlayProxyText.text = "TXT id=${textOverlay.id.takeLast(4)} x=${"%.2f".format(textOverlay.x)} y=${"%.2f".format(textOverlay.y)}\n" +
                 "box=(${binding.overlayProxyBox.x.toInt()},${binding.overlayProxyBox.y.toInt()}) new=$isNewSelection\n" +
                 "vRect=(${diagRect?.left?.toInt()},${diagRect?.top?.toInt()},${diagRect?.right?.toInt()},${diagRect?.bottom?.toInt()})\n" +
-                "vSize=${diagVSize.width}x${diagVSize.height} view=${binding.previewPlayerView.width}x${binding.previewPlayerView.height}"
+                "vSize=${diagVSize.width}x${diagVSize.height} view=${binding.previewPlayerView.width}x${binding.previewPlayerView.height}\n" +
+                "attached=${binding.previewPlayerView.player === player} state=${player.playbackState} pwr=${player.playWhenReady}"
             posX = textOverlay.x
             posY = textOverlay.y
         } else {
