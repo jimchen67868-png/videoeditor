@@ -570,11 +570,12 @@ class EditorActivity : AppCompatActivity() {
             // a screenshot could catch it.
             val diagRect = previewVideoRect()
             val diagVSize = player.videoSize
+            val diagFileDims = viewModel.project.value?.clips?.getOrNull(player.currentMediaItemIndex)?.sourceUri?.let { realVideoDimensions(it) }
             binding.overlayProxyText.text = "TXT id=${textOverlay.id.takeLast(4)} x=${"%.2f".format(textOverlay.x)} y=${"%.2f".format(textOverlay.y)}\n" +
                 "box=(${binding.overlayProxyBox.x.toInt()},${binding.overlayProxyBox.y.toInt()}) new=$isNewSelection\n" +
                 "vRect=(${diagRect?.left?.toInt()},${diagRect?.top?.toInt()},${diagRect?.right?.toInt()},${diagRect?.bottom?.toInt()})\n" +
-                "vSize=${diagVSize.width}x${diagVSize.height} view=${binding.previewPlayerView.width}x${binding.previewPlayerView.height}\n" +
-                "attached=${binding.previewPlayerView.player === player} state=${player.playbackState} pwr=${player.playWhenReady}"
+                "vSize=${diagVSize.width}x${diagVSize.height} fileDims=${diagFileDims?.first}x${diagFileDims?.second}\n" +
+                "attached=${binding.previewPlayerView.player === player} state=${player.playbackState}"
             posX = textOverlay.x
             posY = textOverlay.y
         } else {
@@ -786,32 +787,78 @@ class EditorActivity : AppCompatActivity() {
      * both call sites can normalize against the real video area instead of
      * the raw view bounds.
      */
+    private val videoDimensionCache = mutableMapOf<android.net.Uri, Pair<Int, Int>>()
+
+    /**
+     * Reads a clip's real video width/height directly from the file via
+     * MediaMetadataRetriever, independent of the player entirely. Added
+     * because player.videoSize was confirmed (via the OverlayDiag toast/text
+     * diagnostics) to report (0,0) even while the player is attached,
+     * STATE_READY, and visibly rendering frames -- i.e. player.videoSize is
+     * not a reliable source of truth in this app's setup, likely because a
+     * custom video-effects pipeline (setVideoEffects) is attached, which may
+     * not feed Media3's normal size-reporting path the same way. Rotation is
+     * folded into width/height directly here (unlike player.videoSize's
+     * separate unappliedRotationDegrees field) so callers get the true
+     * on-screen dimensions with no further adjustment needed. Cached per URI
+     * since MediaMetadataRetriever is relatively slow and this may be called
+     * every poll tick.
+     */
+    private fun realVideoDimensions(uri: android.net.Uri): Pair<Int, Int>? {
+        videoDimensionCache[uri]?.let { return it }
+        return try {
+            val retriever = android.media.MediaMetadataRetriever()
+            try {
+                retriever.setDataSource(this, uri)
+                val w = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toIntOrNull() ?: return null
+                val h = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toIntOrNull() ?: return null
+                val rotation = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)?.toIntOrNull() ?: 0
+                val dims = if (rotation == 90 || rotation == 270) Pair(h, w) else Pair(w, h)
+                videoDimensionCache[uri] = dims
+                dims
+            } finally {
+                // release() (not close()/use{}) -- MediaMetadataRetriever only
+                // implements Closeable since API 29, and this project's
+                // minSdk is 24, so use{} could crash on older devices.
+                retriever.release()
+            }
+        } catch (e: Exception) {
+            null
+        }
+    }
+
     private fun previewVideoRect(): android.graphics.RectF? {
         val viewWidth = binding.previewPlayerView.width
         val viewHeight = binding.previewPlayerView.height
         if (viewWidth <= 0 || viewHeight <= 0) return null // not laid out yet
 
-        val videoSize = player.videoSize
-        var rawWidth = videoSize.width
-        var rawHeight = videoSize.height
-        if (rawWidth <= 0 || rawHeight <= 0) {
-            // Video size not known yet (e.g. player just recreated, not
-            // prepared/decoding a frame yet) -- fall back to the full view
-            // rather than hiding the box entirely.
-            return android.graphics.RectF(0f, 0f, viewWidth.toFloat(), viewHeight.toFloat())
-        }
-        // Guard against unapplied rotation metadata: some sources report
-        // pre-rotation decode dimensions via unappliedRotationDegrees rather
-        // than baking the swap into width/height, particularly once a
-        // custom video-effects pipeline is attached (our overlay effects).
-        // Unverified against an actual device for this specific clip --
-        // flagging in case the mismatch persists after the box-size fix, so
-        // it's not a silent, undetectable assumption.
-        if (videoSize.unappliedRotationDegrees == 90 || videoSize.unappliedRotationDegrees == 270) {
-            val swap = rawWidth; rawWidth = rawHeight; rawHeight = swap
+        val currentClipUri = viewModel.project.value?.clips?.getOrNull(player.currentMediaItemIndex)?.sourceUri
+        val fileDims = currentClipUri?.let { realVideoDimensions(it) }
+
+        var rawWidth: Int
+        var rawHeight: Int
+        var pixelAspectRatio = 1f
+        if (fileDims != null) {
+            rawWidth = fileDims.first
+            rawHeight = fileDims.second
+        } else {
+            // Fall back to player.videoSize if the file couldn't be read for
+            // any reason (e.g. a content:// URI this retriever can't open).
+            val videoSize = player.videoSize
+            rawWidth = videoSize.width
+            rawHeight = videoSize.height
+            pixelAspectRatio = videoSize.pixelWidthHeightRatio
+            if (rawWidth <= 0 || rawHeight <= 0) {
+                // Truly no size info available anywhere -- fall back to the
+                // full view rather than hiding the box entirely.
+                return android.graphics.RectF(0f, 0f, viewWidth.toFloat(), viewHeight.toFloat())
+            }
+            if (videoSize.unappliedRotationDegrees == 90 || videoSize.unappliedRotationDegrees == 270) {
+                val swap = rawWidth; rawWidth = rawHeight; rawHeight = swap
+            }
         }
 
-        val videoAspect = (rawWidth * videoSize.pixelWidthHeightRatio) / rawHeight
+        val videoAspect = (rawWidth * pixelAspectRatio) / rawHeight
         val viewAspect = viewWidth.toFloat() / viewHeight.toFloat()
 
         return if (videoAspect > viewAspect) {
