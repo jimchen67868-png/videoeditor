@@ -595,11 +595,19 @@ class EditorActivity : AppCompatActivity() {
 
         val videoRect = previewVideoRect() ?: return // not laid out yet
 
-        // Only snap to the overlay's stored position when we just switched to
-        // it -- otherwise leave the box where the user last dragged it within
-        // this same active window (position already committed to the model,
-        // this just avoids a visible jump every poll tick).
-        if (isNewSelection) {
+        // Recompute size/position on every idle tick (not just on a fresh
+        // selection) -- previously this only ran once, right when
+        // isNewSelection flipped true, then stayed frozen until the next
+        // reselect. That one-shot design has repeatedly made it look like
+        // fixes weren't working: a box snapped before a given fix landed
+        // would keep showing the OLD stale result indefinitely, even after
+        // the underlying formula was corrected, unless you happened to
+        // deliberately reselect it. Recomputing every tick means the box
+        // always reflects the current model + current formula, with no way
+        // to go stale. Safe to do unconditionally here since the
+        // isDraggingOverlay/isResizingOverlay early-return above already
+        // protects actual in-progress gestures from being fought over.
+        run {
             // Box size must be DERIVED from the overlay's actual saved
             // sizeSp/scale here, not reset to a fixed constant -- previously
             // every reselect snapped back to a hardcoded 120x60dp box no
