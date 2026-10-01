@@ -653,8 +653,33 @@ class EditorActivity : AppCompatActivity() {
             // exactly this ~450px height. Now capped to a sane fraction of
             // the actual video area so a large font size can't blow the box
             // up past what a text box should reasonably look like.
-            val boxWidthPx = (baseWidthPx * sizeRatio * videoScale).toInt()
-                .coerceIn(minSizePx, (videoRect.width() * 0.9f).toInt().coerceAtLeast(minSizePx))
+            // FIX: box WIDTH was always a rough per-sp heuristic
+            // (baseWidthPx * sizeRatio), never the real measured width of
+            // the actual text string -- so a short string like "text2" at a
+            // large sizeSp could render much wider than this heuristic
+            // predicted, leaving the box too narrow to contain it even
+            // though the box's CENTER is now correctly positioned. Measure
+            // the real string width instead, using a Paint at the SAME
+            // apparent on-screen size the true render uses: the real render
+            // (TextOverlayEffectFactory) sizes text in TRUE VIDEO FRAME
+            // pixels as sizeSp * (1080/360f) -- that only matches what's
+            // visually on screen once scaled by how much the true video
+            // resolution (fileDims, read from the file itself) is shrunk to
+            // fit into this view's displayed videoRect.
+            val boxWidthPx = if (textOverlay != null) {
+                val trueVideoWidthPx = (viewModel.project.value?.clips?.getOrNull(player.currentMediaItemIndex)?.sourceUri
+                    ?.let { realVideoDimensions(it) }?.first)?.takeIf { it > 0 } ?: videoRect.width().toInt().coerceAtLeast(1)
+                val trueToViewScale = videoRect.width() / trueVideoWidthPx.toFloat()
+                val onScreenFontPx = (textOverlay.sizeSp * (1080f / 360f)) * trueToViewScale
+                val measured = android.text.TextPaint().apply { textSize = onScreenFontPx.coerceAtLeast(1f) }
+                    .measureText(textOverlay.text)
+                // Add horizontal padding (20%) so the box reads as slightly
+                // larger than the glyphs rather than an exact, cramped fit.
+                (measured * 1.2f).toInt().coerceIn(minSizePx, (videoRect.width() * 0.9f).toInt().coerceAtLeast(minSizePx))
+            } else {
+                (baseWidthPx * sizeRatio * videoScale).toInt()
+                    .coerceIn(minSizePx, (videoRect.width() * 0.9f).toInt().coerceAtLeast(minSizePx))
+            }
             val boxHeightPx = (baseHeightPx * sizeRatio * videoScale).toInt()
                 .coerceIn(minSizePx, (videoRect.height() * 0.3f).toInt().coerceAtLeast(minSizePx))
             binding.overlayProxyBox.layoutParams = binding.overlayProxyBox.layoutParams.apply {
