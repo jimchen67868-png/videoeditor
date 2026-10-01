@@ -571,11 +571,22 @@ class EditorActivity : AppCompatActivity() {
             val diagRect = previewVideoRect()
             val diagVSize = player.videoSize
             val diagFileDims = viewModel.project.value?.clips?.getOrNull(player.currentMediaItemIndex)?.sourceUri?.let { realVideoDimensions(it) }
-            binding.overlayProxyText.text = "TXT id=${textOverlay.id.takeLast(4)} x=${"%.2f".format(textOverlay.x)} y=${"%.2f".format(textOverlay.y)}\n" +
-                "box=(${binding.overlayProxyBox.x.toInt()},${binding.overlayProxyBox.y.toInt()}) new=$isNewSelection\n" +
+            val diagText = "TXT id=${textOverlay.id.takeLast(4)} x=${"%.2f".format(textOverlay.x)} y=${"%.2f".format(textOverlay.y)}\n" +
+                "box=(${binding.overlayProxyBox.x.toInt()},${binding.overlayProxyBox.y.toInt()}) w/h=(${binding.overlayProxyBox.layoutParams.width},${binding.overlayProxyBox.layoutParams.height}) new=$isNewSelection\n" +
                 "vRect=(${diagRect?.left?.toInt()},${diagRect?.top?.toInt()},${diagRect?.right?.toInt()},${diagRect?.bottom?.toInt()})\n" +
                 "vSize=${diagVSize.width}x${diagVSize.height} fileDims=${diagFileDims?.first}x${diagFileDims?.second}\n" +
                 "attached=${binding.previewPlayerView.player === player} state=${player.playbackState}"
+            binding.overlayProxyText.text = diagText
+            if (isNewSelection) {
+                // TEMP: also show as a Toast -- renders above everything,
+                // including the native play button that's been obstructing
+                // part of the on-box text, and isn't subject to screenshot
+                // cropping/scaling ambiguity the way the live preview image
+                // has been. Gated to isNewSelection specifically (even
+                // though box repositioning itself is no longer gated by it)
+                // so this doesn't spam a Toast every single poll tick.
+                android.widget.Toast.makeText(this, diagText, android.widget.Toast.LENGTH_LONG).show()
+            }
             posX = textOverlay.x
             posY = textOverlay.y
         } else {
